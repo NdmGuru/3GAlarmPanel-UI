@@ -3,30 +3,26 @@
 #include <SerialCommand.h>
 #include <EEPROM.h>
 
-
+// General Vars
 #define arduinoLED 13   // Arduino LED on board
 #define EEPROMStart 513 // Start write and read for EEPROM
+
+// SerialCommand Stuff
+char replybuffer[64];
+SerialCommand SCmd;
 
 // FONA Settings
 #define FONA_TX 2
 #define FONA_RX 3
 #define FONA_RST 9
 
-// this is a large buffer for replies
-char replybuffer[64];
-
-#define TX 1
-#define RX 0
-SoftwareSerial SoftSerial = SoftwareSerial(RX,TX);     // The SoftwareSerial Object
-SerialCommand SCmd(SoftSerial);   // The demo SerialCommand object, using the SoftwareSerial Constructor
-
+// FONA Stuff
 SoftwareSerial fonaSS = SoftwareSerial(FONA_TX,FONA_RX);
 SoftwareSerial *fonaSerial = &fonaSS;
-
 Adafruit_FONA_3G fona = Adafruit_FONA_3G(FONA_RST);
-
 uint8_t readline(char *buff, uint8_t maxbuff, uint16_t timeout = 0);
 
+// Our Config Structure
 struct config_t
 {
     int alertHigh;
@@ -39,12 +35,8 @@ void setup()
 {   
   //Read our last state from EEPROM
   EEPROM.get(EEPROMStart, configuration);
-  pinMode(arduinoLED,OUTPUT);      // Configure the onboard LED for output
-  digitalWrite(arduinoLED,LOW);    // default to LED off
 
   Serial.begin(9600); 
-  SoftSerial.begin(9600); 
-  
   Serial.println(F("Starting 3GAlarmPanel-NDM.guru V0001"));
   Serial.println(F("Initializing....(May take 3 seconds)"));
 
