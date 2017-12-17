@@ -51,6 +51,7 @@ void setup()
   SCmd.addCommand("phone",setPhone);  // Converts two arguments to integers and echos them back 
   SCmd.addCommand("config",showConfig);  // Converts two arguments to integers and echos them back 
   SCmd.addCommand("default",clearEeprom);  // Converts two arguments to integers and echos them back 
+  SCmd.addCommand("message",sendMessage);  // Converts two arguments to integers and echos them back 
   SCmd.addDefaultHandler(unrecognized);  // Handler for command that isn't matched  (says "What?") 
   
   showConfig();
@@ -115,6 +116,30 @@ void setPhone()
 
   Serial.println(F("Phone numbers saved"));
   showConfig();
+}
+
+void sendMessage()    
+{ 
+  char arg[25];
+  char message[25] = "Testing message!";
+ 
+     
+ if(strlen(message) == 0){
+    Serial.println(F("send <message (25char)>"));
+    return;
+  }
+  
+  if (!fona.sendSMS(configuration.phone1, message)) {
+    Serial.println(F("Failed send message to phone 1"));
+  } else {
+    Serial.println(F("Sent to phone 1!"));
+  }
+
+  if (!fona.sendSMS(configuration.phone2, message)) {
+    Serial.println(F("Failed send message to phone 2"));
+  } else {
+    Serial.println(F("Sent to phone 2!"));
+  }
 }
 
 void showConfig(){
