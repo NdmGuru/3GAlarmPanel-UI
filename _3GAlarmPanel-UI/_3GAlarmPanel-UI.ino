@@ -27,8 +27,6 @@ Adafruit_FONA_3G fona = Adafruit_FONA_3G(FONA_RST);
 
 uint8_t readline(char *buff, uint8_t maxbuff, uint16_t timeout = 0);
 
-uint8_t type;
-
 struct config_t
 {
     int alertHigh;
@@ -38,7 +36,7 @@ struct config_t
 } configuration;
 
 void setup()
-{ 
+{   
   //Read our last state from EEPROM
   EEPROM.get(EEPROMStart, configuration);
   pinMode(arduinoLED,OUTPUT);      // Configure the onboard LED for output
