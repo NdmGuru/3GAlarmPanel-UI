@@ -1,3 +1,4 @@
+#include <SHT1x.h>
 #include <Adafruit_FONA.h>
 #include <SoftwareSerial.h> 
 #include <SerialCommand.h>
@@ -7,7 +8,7 @@
 #define arduinoLED 13   // Arduino LED on board
 #define EEPROMStart 513 // Start write and read for EEPROM
 
-// SerialCommand Stuff
+// SerialCommand
 char replybuffer[64];
 SerialCommand SCmd;
 
@@ -16,19 +17,52 @@ SerialCommand SCmd;
 #define FONA_RX 3
 #define FONA_RST 9
 
-// FONA Stuff
+// Specify data and clock connections and instantiate SHT1x object
+#define SHT11_DATA  6
+#define SHT11_CLOCK 5
+
+SHT1x sht1x(SHT11_DATA, SHT11_CLOCK);
+
+// FONA
 SoftwareSerial fonaSS = SoftwareSerial(FONA_TX,FONA_RX);
 SoftwareSerial *fonaSerial = &fonaSS;
 Adafruit_FONA_3G fona = Adafruit_FONA_3G(FONA_RST);
 uint8_t readline(char *buff, uint8_t maxbuff, uint16_t timeout = 0);
 
+// Timing
+unsigned long   alarmPreviousMillis      = 0; // last time update
+long            alarmCheckInterval       = 5000; // 5 Seconds
+unsigned long   alertPreviousMillis      = 0; // last time update
+long            alertCheckInterval       = 6000; // 6 Seconds
+
+
+struct alarm_t
+{
+  bool    current        = false;
+  long    lastAlert      = 0    ;
+  bool    tempLowCurrent = false;
+  int     tempHighCurrent       ;
+  int     temp                  ;
+  bool    muted          = false;
+} alarm;
+
+struct current_t
+{
+  float temp_c;
+  float temp_f;
+  float humidity;
+} current;
+
 // Our Config Structure
 struct config_t
 {
-    int alertHigh;
-    int alertLow;
-    char phone1[11];
-    char phone2[11];
+    int   alertHigh;
+    int   alertLow;
+    bool  tempAlarm;
+    long  alarmRepeat;
+    char  phone1[11];
+    char  phone2[11];
+    bool  wireless_en = false;
 } configuration;
 
 void setup()
@@ -38,20 +72,25 @@ void setup()
 
   Serial.begin(9600); 
   Serial.println(F("Starting 3GAlarmPanel-NDM.guru V0001"));
-  Serial.println(F("Initializing....(May take 3 seconds)"));
-
-  fonaSerial->begin(4800);
-  if (! fona.begin(*fonaSerial)) {
-    Serial.println(F("Couldn't find FONA"));
-    while (1);
+  Serial.println(F("Line termination needs to be CR for terminal to work..."));
+  
+  if(configuration.wireless_en){
+    Serial.println(F("Initializing wireless....(May take 3 seconds)"));
+    fonaSerial->begin(4800);
+    if (! fona.begin(*fonaSerial)) {
+      Serial.println(F("Couldn't find FONA"));
+      while (1);
+    }
   }
   
   // Setup callbacks for SerialCommand commands   
-  SCmd.addCommand("temp",setTemp);  // Converts two arguments to integers and echos them back 
+  SCmd.addCommand("temp",setTemp);  // Converts two arguments to integers and echos them back
+  SCmd.addCommand("show",showCurrent);  // Converts two arguments to integers and echos them back 
   SCmd.addCommand("phone",setPhone);  // Converts two arguments to integers and echos them back 
   SCmd.addCommand("config",showConfig);  // Converts two arguments to integers and echos them back 
+  SCmd.addCommand("repeat",setRepeat);  // Converts two arguments to integers and echos them back 
   SCmd.addCommand("default",clearEeprom);  // Converts two arguments to integers and echos them back 
-  SCmd.addCommand("message",sendMessage);  // Converts two arguments to integers and echos them back 
+  SCmd.addCommand("testsms",sendTestMessage);  // Converts two arguments to integers and echos them back 
   SCmd.addDefaultHandler(unrecognized);  // Handler for command that isn't matched  (says "What?") 
   
   showConfig();
@@ -61,9 +100,120 @@ void setup()
 
 void loop()
 {  
-  SCmd.readSerial();     // We don't do much, just process serial commands
+  // Basic timing here, may need to get ALOT more complicated...
+  unsigned long currentMillis = millis();
+
+  if(currentMillis - alarmPreviousMillis > alarmCheckInterval) {
+     alarmPreviousMillis = currentMillis;
+     updateStatus();
+  }
+
+  if(currentMillis - alertPreviousMillis > alertCheckInterval) {
+     alertPreviousMillis = currentMillis;
+     sendAlerts(currentMillis);
+  }
+
+  // Read the serial buffer and run commands
+  SCmd.readSerial();     
 }
 
+void sendAlerts(unsigned long currentMillis ){
+  //unsigned long currentMillis = millis();
+  if(alarm.current == true){
+    
+    Serial.println("Alarms are currenet");
+    Serial.println(alarm.lastAlert);
+    Serial.println(configuration.alarmRepeat);
+    Serial.println(currentMillis);
+    
+    if(currentMillis - alarm.lastAlert > configuration.alarmRepeat) {
+         alarm.lastAlert = currentMillis;
+         
+         Serial.println("Sending Alerts");
+         // Show to the term
+         showCurrent();
+          
+         // Send SMS's
+         smsAlerts();}
+  }
+}
+
+void smsAlerts(){
+  // send the sms alerts
+  Serial.println("We would sms here");
+}
+
+void updateStatus(){
+  // Update the temp/humidity sensors
+  readSHT11();
+  
+  // Update high temp alarm status
+  if(current.temp_c >= configuration.alertHigh){
+    alarm.temp = current.temp_c;
+    alarm.tempHighCurrent = true;
+  }else{
+    alarm.tempHighCurrent = false;
+  }
+
+  // Update low temp alarm status
+  if(current.temp_c <= configuration.alertLow){
+    alarm.temp = current.temp_c;
+    alarm.tempLowCurrent = true;
+  }else{
+    alarm.tempLowCurrent = false;
+  } 
+
+  // IMPORTANT - ALL ALARM DECITIONS ARE MADE ON THIS VAR!! UPDATE THE FUCKING THING WHEN U ADD MORE ALARMS!
+  // Current - TempHigh, TempLow
+  // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  //update the global alarm status var.
+  if ((alarm.tempLowCurrent == true) or (alarm.tempHighCurrent == true)){
+    alarm.current = true;
+  }else{
+    alarm.current = false;
+  }
+}
+
+void showCurrent(){
+  // Print the values to the serial port - Menu triggered
+  Serial.print(F("Temperature: "));
+  Serial.print(current.temp_c, DEC);
+  Serial.print(F("C"));
+  Serial.print(F(" Humidity: "));
+  Serial.print(current.humidity, DEC);
+  Serial.println(F("%"));
+
+  if(alarm.tempHighCurrent == true){
+    Serial.print(F("ALARM TEMP HIGH: "));
+    Serial.println(alarm.temp);
+  }else if(alarm.tempLowCurrent == true){
+    Serial.print(F("ALARM TEMP LOW: "));
+    Serial.println(alarm.temp);
+  }
+  
+}
+
+
+void setRepeat()    
+{ 
+  char *arg; 
+
+  arg = SCmd.next(); 
+  if (arg != NULL) 
+  {
+    configuration.alarmRepeat=atoi(arg);    // Converts a char string to an integer
+    configuration.alarmRepeat=configuration.alarmRepeat * 6000 ;
+    Serial.print(F("Repeat: ")); 
+    Serial.println(configuration.alarmRepeat / 6000); 
+  } 
+  else {
+    Serial.println(F("repeat <time in minutes>")); 
+    return;
+  }
+
+  EEPROM.put(EEPROMStart, configuration);
+}
 
 void setTemp()    
 { 
@@ -95,6 +245,12 @@ void setTemp()
   EEPROM.put(EEPROMStart, configuration);
 }
 
+void readSHT11(){
+  current.temp_c    = sht1x.readTemperatureC();
+  current.temp_f    = sht1x.readTemperatureF();
+  current.humidity  = sht1x.readHumidity();
+}
+
 void setPhone()    
 { 
   char arg[11];
@@ -118,27 +274,28 @@ void setPhone()
   showConfig();
 }
 
-void sendMessage()    
+void sendTestMessage()    
 { 
   char arg[25];
   char message[25] = "Testing message!";
  
-     
- if(strlen(message) == 0){
-    Serial.println(F("send <message (25char)>"));
-    return;
-  }
+ if(configuration.wireless_en){
+   if(strlen(message) == 0){
+      Serial.println(F("send <message (25char)>"));
+      return;
+    }
+    
+    if (!fona.sendSMS(configuration.phone1, message)) {
+      Serial.println(F("Failed send message to phone 1"));
+    } else {
+      Serial.println(F("Sent to phone 1!"));
+    }
   
-  if (!fona.sendSMS(configuration.phone1, message)) {
-    Serial.println(F("Failed send message to phone 1"));
-  } else {
-    Serial.println(F("Sent to phone 1!"));
-  }
-
-  if (!fona.sendSMS(configuration.phone2, message)) {
-    Serial.println(F("Failed send message to phone 2"));
-  } else {
-    Serial.println(F("Sent to phone 2!"));
+    if (!fona.sendSMS(configuration.phone2, message)) {
+      Serial.println(F("Failed send message to phone 2"));
+    } else {
+      Serial.println(F("Sent to phone 2!"));
+    }
   }
 }
 
@@ -154,6 +311,9 @@ void showConfig(){
   Serial.println(configuration.phone1); 
   Serial.print(F("    Phone 2: ")); 
   Serial.println(configuration.phone2);
+  Serial.print(F("    Repeat: ")); 
+  Serial.println(configuration.alarmRepeat / 6000);
+
 }
 
 void clearEeprom(){
@@ -164,11 +324,15 @@ void clearEeprom(){
 }
 
 void imei(){
-  // Print module IMEI number.
-  char imei[15] = {0}; // MUST use a 16 character buffer for IMEI!
-  uint8_t imeiLen = fona.getIMEI(imei);
-  if (imeiLen > 0) {
-    Serial.print(F("Module IMEI: ")); Serial.println(imei);
+  if(configuration.wireless_en){
+    // Print module IMEI number.
+    char imei[15] = {0}; // MUST use a 16 character buffer for IMEI!
+    uint8_t imeiLen = fona.getIMEI(imei);
+    if (imeiLen > 0) {
+      Serial.print(F("Module IMEI: ")); Serial.println(imei);
+    }
+  }else{
+    Serial.println("Enable wireless to show imei");
   }
 }
 
