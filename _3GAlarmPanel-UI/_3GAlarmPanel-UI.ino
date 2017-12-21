@@ -122,9 +122,6 @@ void sendAlerts(unsigned long currentMillis ){
   if(alarm.current == true){
     
     Serial.println("Alarms are currenet");
-    Serial.println(alarm.lastAlert);
-    Serial.println(configuration.alarmRepeat);
-    Serial.println(currentMillis);
     
     if(currentMillis - alarm.lastAlert > configuration.alarmRepeat) {
          alarm.lastAlert = currentMillis;
@@ -203,9 +200,9 @@ void setRepeat()
   if (arg != NULL) 
   {
     configuration.alarmRepeat=atoi(arg);    // Converts a char string to an integer
-    configuration.alarmRepeat=configuration.alarmRepeat * 6000 ;
+    configuration.alarmRepeat=configuration.alarmRepeat * 60000 ;
     Serial.print(F("Repeat: ")); 
-    Serial.println(configuration.alarmRepeat / 6000); 
+    Serial.println(configuration.alarmRepeat / 60000); 
   } 
   else {
     Serial.println(F("repeat <time in minutes>")); 
