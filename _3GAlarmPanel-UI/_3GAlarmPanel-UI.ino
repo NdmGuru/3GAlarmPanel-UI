@@ -18,8 +18,8 @@ SerialCommand SCmd;
 #define FONA_RST 9
 
 // Specify data and clock connections and instantiate SHT1x object
-#define SHT11_DATA  6
-#define SHT11_CLOCK 5
+#define SHT11_DATA  5
+#define SHT11_CLOCK 4
 
 SHT1x sht1x(SHT11_DATA, SHT11_CLOCK);
 
