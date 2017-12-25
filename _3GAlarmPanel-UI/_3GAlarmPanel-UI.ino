@@ -7,6 +7,7 @@
 // General Vars
 #define arduinoLED 13   // Arduino LED on board
 #define EEPROMStart 513 // Start write and read for EEPROM
+#define NUM_SAMPLES 10  // number of analog samples to take per voltage reading
 
 // SerialCommand
 char replybuffer[64];
@@ -34,6 +35,7 @@ unsigned long   alarmPreviousMillis      = 0; // last time update
 long            alarmCheckInterval       = 5000; // 5 Seconds
 unsigned long   alertPreviousMillis      = 0; // last time update
 long            alertCheckInterval       = 6000; // 6 Seconds
+bool            alertFirstCheck          = true;
 
 
 struct alarm_t
@@ -43,6 +45,8 @@ struct alarm_t
   bool    tempLowCurrent = false;
   int     tempHighCurrent       ;
   int     temp                  ;
+  float   voltage               ;
+  bool    voltageCurrent        ;
   bool    muted          = false;
 } alarm;
 
@@ -51,6 +55,7 @@ struct current_t
   float temp_c;
   float temp_f;
   float humidity;
+  float voltage;
 } current;
 
 // Our Config Structure
@@ -84,17 +89,17 @@ void setup()
   }
   
   // Setup callbacks for SerialCommand commands   
-  SCmd.addCommand("temp",setTemp);  // Converts two arguments to integers and echos them back
-  SCmd.addCommand("show",showCurrent);  // Converts two arguments to integers and echos them back 
-  SCmd.addCommand("phone",setPhone);  // Converts two arguments to integers and echos them back 
-  SCmd.addCommand("config",showConfig);  // Converts two arguments to integers and echos them back 
-  SCmd.addCommand("repeat",setRepeat);  // Converts two arguments to integers and echos them back 
-  SCmd.addCommand("default",clearEeprom);  // Converts two arguments to integers and echos them back 
-  SCmd.addCommand("testsms",sendTestMessage);  // Converts two arguments to integers and echos them back 
-  SCmd.addDefaultHandler(unrecognized);  // Handler for command that isn't matched  (says "What?") 
+  SCmd.addCommand("temp",setTemp);
+  SCmd.addCommand("show",showCurrent);
+  SCmd.addCommand("phone",setPhone);
+  SCmd.addCommand("config",showConfig);
+  SCmd.addCommand("repeat",setRepeat);
+  SCmd.addCommand("default",clearEeprom);
+  SCmd.addCommand("testsms",sendTestMessage);
+  SCmd.addDefaultHandler(unrecognized);
   
   showConfig();
-    
+  
   Serial.println(F("Ready")); 
  }
 
@@ -102,6 +107,12 @@ void loop()
 {  
   // Basic timing here, may need to get ALOT more complicated...
   unsigned long currentMillis = millis();
+
+  if(alertFirstCheck){
+    updateStatus();
+    sendAlerts(currentMillis);
+    alertFirstCheck = false;
+  }
 
   if(currentMillis - alarmPreviousMillis > alarmCheckInterval) {
      alarmPreviousMillis = currentMillis;
@@ -143,6 +154,7 @@ void smsAlerts(){
 void updateStatus(){
   // Update the temp/humidity sensors
   readSHT11();
+  readVoltage();
   
   // Update high temp alarm status
   if(current.temp_c >= configuration.alertHigh){
@@ -160,12 +172,20 @@ void updateStatus(){
     alarm.tempLowCurrent = false;
   } 
 
+  // Update low temp alarm status
+  if(current.voltage <= 4.00){
+    alarm.voltage = current.voltage;
+    alarm.voltageCurrent = true;
+  }else{
+    alarm.voltageCurrent = false;
+  }
+
   // IMPORTANT - ALL ALARM DECITIONS ARE MADE ON THIS VAR!! UPDATE THE FUCKING THING WHEN U ADD MORE ALARMS!
   // Current - TempHigh, TempLow
   // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   //update the global alarm status var.
-  if ((alarm.tempLowCurrent == true) or (alarm.tempHighCurrent == true)){
+  if ((alarm.tempLowCurrent == true) or (alarm.tempHighCurrent == true) or (alarm.voltageCurrent == true)){
     alarm.current = true;
   }else{
     alarm.current = false;
@@ -179,8 +199,11 @@ void showCurrent(){
   Serial.print(F("C"));
   Serial.print(F(" Humidity: "));
   Serial.print(current.humidity, DEC);
-  Serial.println(F("%"));
-
+  Serial.print(F("%"));
+  Serial.print(F(" Voltage: "));
+  Serial.print(current.voltage, DEC);
+  Serial.println(F("V"));
+  
   if(alarm.tempHighCurrent == true){
     Serial.print(F("ALARM TEMP HIGH: "));
     Serial.println(alarm.temp);
@@ -188,7 +211,12 @@ void showCurrent(){
     Serial.print(F("ALARM TEMP LOW: "));
     Serial.println(alarm.temp);
   }
-  
+
+  if(alarm.voltageCurrent == true){
+    Serial.print(F("INPUT VOLTAGE LOW: "));
+    Serial.println(alarm.voltage);
+  }
+    
 }
 
 
@@ -331,6 +359,24 @@ void imei(){
   }else{
     Serial.println("Enable wireless to show imei");
   }
+}
+
+void readVoltage(){
+    int sum = 0;                    // sum of samples taken
+    unsigned char sample_count = 0;
+    float voltage = 0.0;  
+  
+     while (sample_count < NUM_SAMPLES) {
+        sum += analogRead(A0);
+        sample_count++;
+        delay(10);
+    }
+
+    voltage = ((float)sum / (float)NUM_SAMPLES * 5.015) / 1024.0;
+    current.voltage = voltage * 11.132;
+    
+    sample_count = 0;
+    sum = 0;
 }
 
 // This gets set as the default handler, and gets called when no other command matches. 
