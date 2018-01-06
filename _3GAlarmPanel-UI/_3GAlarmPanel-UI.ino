@@ -31,43 +31,45 @@ Adafruit_FONA_3G fona = Adafruit_FONA_3G(FONA_RST);
 uint8_t readline(char *buff, uint8_t maxbuff, uint16_t timeout = 0);
 
 // Timing
-unsigned long   alarmPreviousMillis      = 0; // last time update
-long            alarmCheckInterval       = 5000; // 5 Seconds
-unsigned long   alertPreviousMillis      = 0; // last time update
-long            alertCheckInterval       = 6000; // 6 Seconds
-bool            alertFirstCheck          = true;
+unsigned long   alertPreviousMillis      = 0;     // last time update
+long            alertInterval            = 5000;  // How often
+unsigned long   updatePreviousMillis     = 0;     // last time update
+long            updateInterval           = 5000;  // 6 seconds
+bool            firstCheck               = true;
 
-
-struct alarm_t
+struct STATE
 {
-  bool    current        = false;
-  long    lastAlert      = 0    ;
-  bool    tempLowCurrent = false;
-  int     tempHighCurrent       ;
-  int     temp                  ;
-  float   voltage               ;
-  bool    voltageCurrent        ;
-  bool    muted          = false;
-} alarm;
+  bool  tempHigh     ;
+  bool  tempLow      ;
+  float temp         ;
+  
+  bool  voltageHigh  ;
+  bool  voltageLow   ;
+  float voltage      ;
+  
+  bool  humidityHigh ;
+  bool  humidityLow  ;
+  bool  humidity     ;
 
-struct current_t
-{
-  float temp_c;
-  float temp_f;
-  float humidity;
-  float voltage;
-} current;
+  float lastAlert    ;
+  char  message[40]  ;
+  bool  alarm        ;
+};
+
+STATE current{};
+STATE previous{};
 
 // Our Config Structure
 struct config_t
 {
-    int   alertHigh;
-    int   alertLow;
-    bool  tempAlarm;
+    int   tempHigh;
+    int   tempLow;
+    int   voltageHigh;
+    int   voltageLow;
     long  alarmRepeat;
     char  phone1[11];
     char  phone2[11];
-    bool  wireless_en = false;
+    bool  wireless_en = true;
 } configuration;
 
 void setup()
@@ -80,7 +82,14 @@ void setup()
   Serial.println(F("Line termination needs to be CR for terminal to work..."));
   
   if(configuration.wireless_en){
+    
+    pinMode(8, OUTPUT);
     Serial.println(F("Initializing wireless....(May take 3 seconds)"));
+    
+    digitalWrite(8, HIGH);
+    delay(4000);
+    digitalWrite(8, LOW);
+    
     fonaSerial->begin(4800);
     if (! fona.begin(*fonaSerial)) {
       Serial.println(F("Couldn't find FONA"));
@@ -90,17 +99,22 @@ void setup()
   
   // Setup callbacks for SerialCommand commands   
   SCmd.addCommand("temp",setTemp);
-  SCmd.addCommand("show",showCurrent);
+  SCmd.addCommand("wireless",setWireless);
   SCmd.addCommand("phone",setPhone);
-  SCmd.addCommand("config",showConfig);
   SCmd.addCommand("repeat",setRepeat);
+  SCmd.addCommand("voltage",setVoltage);
+  SCmd.addCommand("show",showCurrent);
+  SCmd.addCommand("config",showConfig);
   SCmd.addCommand("default",clearEeprom);
   SCmd.addCommand("testsms",sendTestMessage);
   SCmd.addDefaultHandler(unrecognized);
   
   showConfig();
+  updateStatus();
   
-  Serial.println(F("Ready")); 
+  Serial.println(F("Ready"));
+  Serial.println(F("Current Status:"));
+  showCurrent();
  }
 
 void loop()
@@ -108,18 +122,19 @@ void loop()
   // Basic timing here, may need to get ALOT more complicated...
   unsigned long currentMillis = millis();
 
-  if(alertFirstCheck){
+  if(firstCheck){
     updateStatus();
+    updateAlertString();
     sendAlerts(currentMillis);
-    alertFirstCheck = false;
+    firstCheck = false; // We've sent on our first run now.  
   }
 
-  if(currentMillis - alarmPreviousMillis > alarmCheckInterval) {
-     alarmPreviousMillis = currentMillis;
+  if(currentMillis - updatePreviousMillis > updateInterval) {
+     updatePreviousMillis = currentMillis;
      updateStatus();
   }
 
-  if(currentMillis - alertPreviousMillis > alertCheckInterval) {
+  if(currentMillis - alertPreviousMillis > alertInterval) {
      alertPreviousMillis = currentMillis;
      sendAlerts(currentMillis);
   }
@@ -129,26 +144,88 @@ void loop()
 }
 
 void sendAlerts(unsigned long currentMillis ){
-  //unsigned long currentMillis = millis();
-  if(alarm.current == true){
-    
-    Serial.println("Alarms are currenet");
-    
-    if(currentMillis - alarm.lastAlert > configuration.alarmRepeat) {
-         alarm.lastAlert = currentMillis;
+  
+  if(current.alarm == true){      
+    if((currentMillis - current.lastAlert > configuration.alarmRepeat) or (firstCheck)) {
+         current.lastAlert = currentMillis;
          
-         Serial.println("Sending Alerts");
+         Serial.println(F("Sending Alerts"));
          // Show to the term
-         showCurrent();
-          
+         Serial.println(current.message);          
          // Send SMS's
-         smsAlerts();}
+         smsAlerts();
+         
+     }
   }
 }
 
+void updateAlertString(){
+  unsigned long currentMillis = millis();
+  char message[40] = "";
+  char currentTemp[7];
+  char currentVoltage[7];
+  bool sendNow = false;
+  
+  dtostrf(current.temp, 5, 2, currentTemp);
+  dtostrf(current.voltage, 5, 2, currentVoltage);
+
+  // Alarms that were previousaly high
+  if ((current.tempHigh) and (previous.tempHigh)){
+      strcat(message,"TEMP HIGH:");
+      strcat(message, currentTemp);
+      strcat(message, " ");
+  }else if((current.tempLow) and (previous.tempLow)){
+      strcat(message,"TEMP LOW:");
+      strcat(message, currentTemp);
+      strcat(message, " ");
+  }else if((previous.tempLow) or (previous.tempHigh)){
+      strcat(message,"TEMP OK:");
+      strcat(message, currentTemp);
+      strcat(message, " ");
+  }
+
+
+  if ((current.voltageHigh) and (previous.voltageHigh)){
+      strcat(message,"VOLTAGE HIGH:");
+      strcat(message, currentVoltage);
+      strcat(message, " ");
+  }else if((current.voltageLow) and (previous.voltageLow)){
+      strcat(message,"VOLTAGE LOW:");
+      strcat(message, currentVoltage);
+      strcat(message, " ");
+  }else if((previous.voltageLow) or (previous.voltageHigh)){
+      strcat(message,"VOLTAGE OK:");
+      strcat(message, currentVoltage);
+      strcat(message, " ");
+      sendNow = true;
+  }
+   strcpy(current.message,message);
+   if(sendNow == true){
+    sendAlerts(currentMillis);
+   }
+}
+
 void smsAlerts(){
-  // send the sms alerts
-  Serial.println("We would sms here");
+ if(configuration.wireless_en == true){
+   if(strlen(current.message) == 0){
+      Serial.println(F("Message empty, skipping"));
+      return;
+    }
+    
+    if (!fona.sendSMS(configuration.phone1, current.message)) {
+      Serial.println(F("Failed send message to phone 1"));
+    } else {
+      Serial.println(F("Sent to phone 1!"));
+    }
+  
+    if (!fona.sendSMS(configuration.phone2, current.message)) {
+      Serial.println(F("Failed send message to phone 2"));
+    } else {
+      Serial.println(F("Sent to phone 2!"));
+    }
+  }else{
+    Serial.println(F("Wireless Disabled, surpessing sms output"));
+  }
 }
 
 void updateStatus(){
@@ -156,67 +233,64 @@ void updateStatus(){
   readSHT11();
   readVoltage();
   
+  // Copy current state to previous state
+  previous = current;
+  
   // Update high temp alarm status
-  if(current.temp_c >= configuration.alertHigh){
-    alarm.temp = current.temp_c;
-    alarm.tempHighCurrent = true;
+  if(current.temp >= configuration.tempHigh){
+    current.tempHigh = true;
   }else{
-    alarm.tempHighCurrent = false;
+    current.tempHigh = false;
   }
 
   // Update low temp alarm status
-  if(current.temp_c <= configuration.alertLow){
-    alarm.temp = current.temp_c;
-    alarm.tempLowCurrent = true;
+  if(current.temp <= configuration.tempLow){
+    current.tempLow = true;
   }else{
-    alarm.tempLowCurrent = false;
+    current.tempLow = false;
   } 
 
-  // Update low temp alarm status
-  if(current.voltage <= 4.00){
-    alarm.voltage = current.voltage;
-    alarm.voltageCurrent = true;
+  // Update voltage alarm status
+  if(current.voltage <= configuration.voltageLow){
+    current.voltageLow = true;
   }else{
-    alarm.voltageCurrent = false;
+    current.voltageLow = false;
+  }
+
+  // Update voltage alarm status
+  if(current.voltage >= configuration.voltageHigh){
+    current.voltageHigh = true;
+  }else{
+    current.voltageHigh = false;
   }
 
   // IMPORTANT - ALL ALARM DECITIONS ARE MADE ON THIS VAR!! UPDATE THE FUCKING THING WHEN U ADD MORE ALARMS!
-  // Current - TempHigh, TempLow
+  // Current - TempHigh, TempLow, Voltage
   // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   //update the global alarm status var.
-  if ((alarm.tempLowCurrent == true) or (alarm.tempHighCurrent == true) or (alarm.voltageCurrent == true)){
-    alarm.current = true;
+  if ((current.tempLow == true) or (current.tempHigh == true) or (current.voltageLow == true) or (current.voltageHigh == true)){
+    current.alarm = true;
   }else{
-    alarm.current = false;
+    current.alarm = false;
   }
+  // Update the alert String.
+  updateAlertString();
 }
 
 void showCurrent(){
   // Print the values to the serial port - Menu triggered
   Serial.print(F("Temperature: "));
-  Serial.print(current.temp_c, DEC);
+  Serial.print(current.temp, DEC);
   Serial.print(F("C"));
   Serial.print(F(" Humidity: "));
   Serial.print(current.humidity, DEC);
   Serial.print(F("%"));
   Serial.print(F(" Voltage: "));
   Serial.print(current.voltage, DEC);
-  Serial.println(F("V"));
-  
-  if(alarm.tempHighCurrent == true){
-    Serial.print(F("ALARM TEMP HIGH: "));
-    Serial.println(alarm.temp);
-  }else if(alarm.tempLowCurrent == true){
-    Serial.print(F("ALARM TEMP LOW: "));
-    Serial.println(alarm.temp);
-  }
-
-  if(alarm.voltageCurrent == true){
-    Serial.print(F("INPUT VOLTAGE LOW: "));
-    Serial.println(alarm.voltage);
-  }
-    
+  Serial.println(F("V")); 
+  Serial.print(F("Message: "));
+  Serial.println(current.message);
 }
 
 
@@ -240,6 +314,30 @@ void setRepeat()
   EEPROM.put(EEPROMStart, configuration);
 }
 
+void setWireless()    
+{ 
+  char *arg;
+  int bool_en;
+
+  arg = SCmd.next(); 
+  if (arg != NULL) {
+   bool_en=atoi(arg);    
+    if(bool_en == 1){
+      configuration.wireless_en = true;
+      Serial.println(F("Wireless Enabled"));
+    }else if(bool_en == 0){
+      configuration.wireless_en = false;
+      Serial.println(F("Wireless Disabled"));
+    }
+  } else {
+    Serial.println(F("wireless <bool>")); 
+    return;
+  }
+
+  EEPROM.put(EEPROMStart, configuration);
+}
+
+
 void setTemp()    
 { 
   char *arg; 
@@ -247,9 +345,9 @@ void setTemp()
   arg = SCmd.next(); 
   if (arg != NULL) 
   {
-    configuration.alertHigh=atoi(arg);    // Converts a char string to an integer
+    configuration.tempHigh=atoi(arg);    // Converts a char string to an integer
     Serial.print(F("HIGH: ")); 
-    Serial.println(configuration.alertHigh); 
+    Serial.println(configuration.tempHigh); 
   } 
   else {
     Serial.println(F("TEMP <HIGH> <LOW>")); 
@@ -259,9 +357,9 @@ void setTemp()
   arg = SCmd.next(); 
   if (arg != NULL) 
   {
-    configuration.alertLow=atol(arg); 
+    configuration.tempLow=atol(arg); 
     Serial.print(F("LOW: ")); 
-    Serial.println(configuration.alertLow); 
+    Serial.println(configuration.tempLow); 
   } 
   else {
     Serial.println(F("TEMP <HIGH> <LOW>"));
@@ -270,9 +368,40 @@ void setTemp()
   EEPROM.put(EEPROMStart, configuration);
 }
 
+void setVoltage()    
+{ 
+  char *arg; 
+
+  arg = SCmd.next(); 
+  if (arg != NULL) 
+  {
+    configuration.voltageLow=atoi(arg);    // Converts a char string to an integer
+    Serial.print(F("LOW: ")); 
+    Serial.println(configuration.voltageLow); 
+  } 
+  else {
+    Serial.println(F("VOLTAGE <LOW> <HIGH>")); 
+    return;
+  }
+
+  arg = SCmd.next(); 
+  if (arg != NULL) 
+  {
+    configuration.voltageHigh=atol(arg); 
+    Serial.print(F("HIGH: ")); 
+    Serial.println(configuration.voltageHigh); 
+  } 
+  else {
+    Serial.println(F("VOLTAGE <LOW> <HIGH>"));
+    return;
+  }
+  EEPROM.put(EEPROMStart, configuration);
+}
+
+
+
 void readSHT11(){
-  current.temp_c    = sht1x.readTemperatureC();
-  current.temp_f    = sht1x.readTemperatureF();
+  current.temp    = sht1x.readTemperatureC();
   current.humidity  = sht1x.readHumidity();
 }
 
@@ -328,16 +457,20 @@ void showConfig(){
   Serial.println(F("Reading Config from EEPROM:")); 
   EEPROM.get(EEPROMStart, configuration);
   Serial.println(F("Current Config:")); 
-  Serial.print(F("    Alert High: ")); 
-  Serial.println(configuration.alertHigh); 
-  Serial.print(F("    Alert Low: ")); 
-  Serial.println(configuration.alertLow);
+  Serial.print(F("    Temp High: ")); 
+  Serial.println(configuration.tempHigh); 
+  Serial.print(F("    Temp Low: ")); 
+  Serial.println(configuration.tempLow);
+  Serial.print(F("    Voltage High: ")); 
+  Serial.println(configuration.voltageHigh); 
+  Serial.print(F("    Voltage Low: ")); 
+  Serial.println(configuration.voltageLow);
   Serial.print(F("    Phone 1: ")); 
   Serial.println(configuration.phone1); 
   Serial.print(F("    Phone 2: ")); 
   Serial.println(configuration.phone2);
   Serial.print(F("    Repeat: ")); 
-  Serial.println(configuration.alarmRepeat / 6000);
+  Serial.println(configuration.alarmRepeat / 60000);
 
 }
 
@@ -357,7 +490,7 @@ void imei(){
       Serial.print(F("Module IMEI: ")); Serial.println(imei);
     }
   }else{
-    Serial.println("Enable wireless to show imei");
+    Serial.println(F("Enable wireless to show imei"));
   }
 }
 
@@ -383,10 +516,13 @@ void readVoltage(){
 void unrecognized()
 {
   Serial.println(F("Commands:")); 
-  Serial.println(F("  phone <number1> <number2>       # SMS Capable, mobiles")); 
-  Serial.println(F("  temp <high> <low>               # 2 didgits")); 
-  Serial.println(F("  config                          # Shows config")); 
-  Serial.println(F("  default                         # Clears EEProm")); 
+  Serial.println(F("  phone <number1> <number2>")); 
+  Serial.println(F("  temp <high> <low>")); 
+  Serial.println(F("  voltage <low> <high>")); 
+  Serial.println(F("  repeat <minutes>")); 
+  Serial.println(F("  config")); 
+  Serial.println(F("  show")); 
+  Serial.println(F("  testsms")); 
+  Serial.println(F("  default")); 
 }
-
 
