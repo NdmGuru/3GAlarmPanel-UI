@@ -1,4 +1,4 @@
-#include <QueueList.h>
+#include <cppQueue.h>
 #include <MemoryFree.h>
 #include <SHT1x.h>
 #include <Adafruit_FONA.h>
@@ -12,7 +12,14 @@
 #define NUM_SAMPLES 10  // number of analog samples to take per voltage reading
 
 // Queue for SMS Messages
-QueueList <char*> msgQueue;
+#define  IMPLEMENTATION  FIFO
+
+typedef struct message {
+  char*    text;
+  bool     sent;
+} Message;
+
+Queue  msgQueue(sizeof(Message), 10, IMPLEMENTATION); // Instantiate queue
 
 // SerialCommand
 char replybuffer[32];
@@ -81,11 +88,12 @@ struct config_t
 
 void setup()
 {   
+
   //Read our last state from EEPROM
   EEPROM.get(EEPROMStart, configuration);
 
   Serial.begin(9600);
-  msgQueue.setPrinter (Serial);
+  
   if(DEBUG){
     Serial.println(F("DEBUG: BEGIN"));
   }
@@ -128,11 +136,10 @@ void setup()
   if(DEBUG){
     showConfig();
   }
-  
-  updateStatus();
-  
+    
   Serial.println(F("Ready"));
   Serial.println(F("Current Status:"));
+  updateStatus();
   showCurrent();
  }
 
@@ -183,7 +190,7 @@ void sendAlertString(){
    Serial.println(F("DEBUG: Update Message String"));
  }
   unsigned long currentMillis = millis();
-  char message[80] = "";
+  char message_t[80] = "";
   char currentTemp[6] = "";
   char currentVoltage[6] = "";
   char currentHumidity[6] = "";
@@ -193,53 +200,55 @@ void sendAlertString(){
   dtostrf(current.humidity, 5, 2, currentHumidity);
 
   if (current.tempHigh){
-      strcat(message,"TEMP HIGH:");
-      strcat(message, currentTemp);
-      strcat(message, " ");
+      strcat(message_t,"TEMP HIGH:");
+      strcat(message_t, currentTemp);
+      strcat(message_t, " ");
   }else if(current.tempLow){
-      strcat(message,"TEMP LOW:");
-      strcat(message, currentTemp);
-      strcat(message, " ");
+      strcat(message_t,"TEMP LOW:");
+      strcat(message_t, currentTemp);
+      strcat(message_t, " ");
   }else{
-      strcat(message,"TEMP OK:");
-      strcat(message, currentTemp);
-      strcat(message, " ");
+      strcat(message_t,"TEMP OK:");
+      strcat(message_t, currentTemp);
+      strcat(message_t, " ");
   }
 
   if (current.voltageHigh){
-      strcat(message,"VOLTAGE HIGH:");
-      strcat(message, currentVoltage);
-      strcat(message, " ");
+      strcat(message_t,"VOLTAGE HIGH:");
+      strcat(message_t, currentVoltage);
+      strcat(message_t, " ");
   }else if(current.voltageLow){
-      strcat(message,"VOLTAGE LOW:");
-      strcat(message, currentVoltage);
-      strcat(message, " ");
+      strcat(message_t,"VOLTAGE LOW:");
+      strcat(message_t, currentVoltage);
+      strcat(message_t, " ");
   }else{
-      strcat(message,"VOLTAGE OK:");
-      strcat(message, currentVoltage);
-      strcat(message, " ");
+      strcat(message_t,"VOLTAGE OK:");
+      strcat(message_t, currentVoltage);
+      strcat(message_t, " ");
   }
 
   if (current.humidityHigh){
-      strcat(message,"HUMIDITY HIGH:");
-      strcat(message, currentHumidity);
-      strcat(message, " ");
+      strcat(message_t,"HUMIDITY HIGH:");
+      strcat(message_t, currentHumidity);
+      strcat(message_t, " ");
   }else if(current.humidityLow){
-      strcat(message,"HUMIDITY LOW:");
-      strcat(message, currentHumidity);
-      strcat(message, " ");
+      strcat(message_t,"HUMIDITY LOW:");
+      strcat(message_t, currentHumidity);
+      strcat(message_t, " ");
   }else{
-      strcat(message,"HUMIDITY OK:");
-      strcat(message, currentHumidity);
-      strcat(message, " ");
+      strcat(message_t,"HUMIDITY OK:");
+      strcat(message_t, currentHumidity);
+      strcat(message_t, " ");
   }
   
-  strcat(message,0);
+  strcat(message_t,0);
   if(DEBUG){
     Serial.print(F("DEBUG: MESSAGE="));
-    Serial.println(message);
+    Serial.println(message_t);
   }
-  msgQueue.push(message);  
+
+  Message message = {message_t, false};
+  msgQueue.push(&message);  
   
 }
 
@@ -252,8 +261,10 @@ void sendMsgs(){
   }
   if(!configuration.wireless_en){
     while (!msgQueue.isEmpty()){
+      Message message;
+      msgQueue.pop(&message);
       Serial.print(F("SENDING MESSAGE: "));
-      Serial.println(msgQueue.pop());
+      Serial.println(message.text);
     }
   }
 }
