@@ -19,7 +19,7 @@ typedef struct message {
   bool     sent;
 } Message;
 
-Queue  msgQueue(sizeof(Message), 10, IMPLEMENTATION); // Instantiate queue
+Queue  msgQueue(80, 5, IMPLEMENTATION); // Instantiate queue
 
 // SerialCommand
 char replybuffer[32];
@@ -43,7 +43,7 @@ Adafruit_FONA_3G fona = Adafruit_FONA_3G(FONA_RST);
 
 // Timing
 static unsigned long   updatePreviousMillis     = 0;     // last time update
-static long            updateInterval           = 5000;  // How often to check sensors 5 seconds
+static int             updateInterval           = 5;     // How often to check sensors 5 seconds
 bool                   firstCheck               = true;
 
 // General Control
@@ -53,13 +53,13 @@ bool                   firstCheck               = true;
 struct STATE
 {
   byte  tempState    ;
-  float temp         ;
+  int   temp         ;
   
   byte  voltageState ;
-  float voltage      ;
+  int   voltage      ;
   
   byte  humidityState;
-  float humidity     ;
+  int   humidity     ;
 
   float lastAlert = 0; // High so we trigger on first alert?
   bool  alarm        ;
@@ -149,7 +149,7 @@ void loop()
   // Basic timing here, may need to get ALOT more complicated...
   unsigned long currentMillis = millis();
 
-  if(currentMillis - updatePreviousMillis > updateInterval) {
+  if(currentMillis - updatePreviousMillis > (updateInterval * 1000)) {
      if(configuration.debug){
        Serial.println(F("DEBUG: Update interval reached"));
      }
@@ -191,7 +191,7 @@ void sendAlertString(){
    Serial.println(F("DEBUG: Update Message String"));
  }
   unsigned long currentMillis = millis();
-  char message_t[80] = "";
+  char message_t[52] = "";
   char currentTemp[6] = "";
   char currentVoltage[6] = "";
   char currentHumidity[6] = "";
