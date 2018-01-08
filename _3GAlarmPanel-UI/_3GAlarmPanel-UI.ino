@@ -49,21 +49,19 @@ bool                   firstCheck               = true;
 // General Control
 #define DEBUG true
 
+// 
 struct STATE
 {
-  bool  tempHigh     ;
-  bool  tempLow      ;
+  byte  tempState    ;
   float temp         ;
   
-  bool  voltageHigh  ;
-  bool  voltageLow   ;
+  byte  voltageState ;
   float voltage      ;
   
-  bool  humidityHigh ;
-  bool  humidityLow  ;
-  bool  humidity     ;
+  byte  humidityState;
+  float humidity     ;
 
-  float lastAlert = 100000 ; // High so we trigger on first alert?
+  float lastAlert = 0; // High so we trigger on first alert?
   bool  alarm        ;
   bool  stateChange  ;
 };
@@ -199,46 +197,59 @@ void sendAlertString(){
   dtostrf(current.voltage, 5, 2, currentVoltage);
   dtostrf(current.humidity, 5, 2, currentHumidity);
 
-  if (current.tempHigh){
-      strcat(message_t,"TEMP HIGH:");
-      strcat(message_t, currentTemp);
-      strcat(message_t, " ");
-  }else if(current.tempLow){
-      strcat(message_t,"TEMP LOW:");
-      strcat(message_t, currentTemp);
-      strcat(message_t, " ");
-  }else{
+  switch(current.tempState){
+    case B00000000:
       strcat(message_t,"TEMP OK:");
       strcat(message_t, currentTemp);
       strcat(message_t, " ");
+      break;
+    case B00000001:
+      strcat(message_t,"TEMP LOW:");
+      strcat(message_t, currentTemp);
+      strcat(message_t, " ");
+      break;
+    case B00000010:
+      strcat(message_t,"TEMP HIGH:");
+      strcat(message_t, currentTemp);
+      strcat(message_t, " ");
+      break;
   }
 
-  if (current.voltageHigh){
-      strcat(message_t,"VOLTAGE HIGH:");
-      strcat(message_t, currentVoltage);
-      strcat(message_t, " ");
-  }else if(current.voltageLow){
-      strcat(message_t,"VOLTAGE LOW:");
-      strcat(message_t, currentVoltage);
-      strcat(message_t, " ");
-  }else{
-      strcat(message_t,"VOLTAGE OK:");
-      strcat(message_t, currentVoltage);
-      strcat(message_t, " ");
-  }
-
-  if (current.humidityHigh){
-      strcat(message_t,"HUMIDITY HIGH:");
-      strcat(message_t, currentHumidity);
-      strcat(message_t, " ");
-  }else if(current.humidityLow){
-      strcat(message_t,"HUMIDITY LOW:");
-      strcat(message_t, currentHumidity);
-      strcat(message_t, " ");
-  }else{
+  switch(current.humidityState){
+    case B00000000:
       strcat(message_t,"HUMIDITY OK:");
       strcat(message_t, currentHumidity);
       strcat(message_t, " ");
+      break;
+    case B00000001:
+      strcat(message_t,"HUMIDITY LOW:");
+      strcat(message_t, currentHumidity);
+      strcat(message_t, " ");
+      break;
+    case B00000010:
+      strcat(message_t,"HUMIDITY HIGH:");
+      strcat(message_t, currentHumidity);
+      strcat(message_t, " ");
+      break;
+  }
+
+  
+  switch(current.voltageState){
+    case B00000000:
+      strcat(message_t,"VOLTAGE OK:");
+      strcat(message_t, currentVoltage);
+      strcat(message_t, " ");
+      break;
+    case B00000001:
+      strcat(message_t,"VOLTAGE LOW:");
+      strcat(message_t, currentVoltage);
+      strcat(message_t, " ");
+      break;
+    case B00000010:
+      strcat(message_t,"VOLTAGE HIGH:");
+      strcat(message_t, currentVoltage);
+      strcat(message_t, " ");
+      break;
   }
   
   strcat(message_t,0);
@@ -259,12 +270,40 @@ void sendMsgs(){
       Serial.println(F("DEBUG: No messages to send"));
     }
   }
-  if(!configuration.wireless_en){
+  if(configuration.wireless_en){
     while (!msgQueue.isEmpty()){
       Message message;
-      msgQueue.pop(&message);
+      msgQueue.peek(&message);
+      if(DEBUG){
       Serial.print(F("SENDING MESSAGE: "));
       Serial.println(message.text);
+       // Actually send the message now...
+       
+        if (!fona.sendSMS(configuration.phone1, message.text)) {
+          Serial.println(F("Failed to send to Phone 1!"));
+        } else {
+          Serial.println(F("Message sent to phone 1!"));
+        }
+
+        if (!fona.sendSMS(configuration.phone2, message.text)) {
+          Serial.println(F("Failed to send to Phone 2!"));
+        } else {
+          Serial.println(F("Message sent to phone 2!"));
+        }
+
+        break;
+      }
+    }
+  }else{
+    // Wireless disabled, tell the console and bail
+    if(!msgQueue.isEmpty(){
+      Serial.println(F("Wireless Disabled, here's the message"));
+      Serial.print(F("SENDING MESSAGE: "));
+      while (!msgQueue.isEmpty()){
+        Message message;
+        msgQueue.pop(&message);
+        Serial.println(message.text);
+      }
     }
   }
 }
@@ -284,23 +323,19 @@ void updateStatus(){
   
   // Update TEMP status
   if(current.temp >= configuration.tempHigh){
-    current.tempHigh = true;
-    current.tempLow  = false;
+    current.tempState = B00000010;
     current.alarm = true;
     if(DEBUG){
        Serial.println(F("DEBUG: TEMP High"));
     }
   }else if (current.temp <= configuration.tempLow){
-    current.tempHigh = false;
-    current.tempLow  = true;
+    current.tempState = B00000001;
     current.alarm = true;
     if(DEBUG){
        Serial.println(F("DEBUG: TEMP Low"));
     }
   }else{
-    current.tempHigh = false;
-    current.tempLow  = false;
-    // Track state change for dismiss messages
+    current.tempState = B00000000;
     if(DEBUG){
        Serial.println(F("DEBUG: Temp Normal"));
     }
@@ -308,22 +343,19 @@ void updateStatus(){
 
   // Update HUMIDITY status
   if(current.humidity >= configuration.humidityHigh){
-    current.humidityHigh = true;
-    current.humidityLow  = false;
+    current.humidityState = B00000010;
     current.alarm = true;
     if(DEBUG){
        Serial.println(F("DEBUG: HUMIDITY High"));
     }
   }else if (current.humidity <= configuration.humidityLow){
-    current.humidityHigh = false;
-    current.humidityLow  = true;
+    current.humidityState = B00000001;
     current.alarm = true;
     if(DEBUG){
        Serial.println(F("DEBUG: HUMIDITY Low"));
     }
   }else{
-    current.humidityHigh = false;
-    current.humidityLow  = false;
+    current.humidityState = B00000000;
     // Track state change for dismiss messages
     if(DEBUG){
        Serial.println(F("DEBUG: Humidity Normal"));
@@ -332,33 +364,25 @@ void updateStatus(){
 
   // Update VOLTAGE status
   if(current.voltage >= configuration.voltageHigh){
-    current.voltageHigh = true;
-    current.voltageLow  = false;
+    current.voltageState = B00000010;
     current.alarm = true;
     if(DEBUG){
        Serial.println(F("DEBUG: VOLTAGE High"));
     }
   }else if (current.voltage <= configuration.voltageLow){
-    current.voltageHigh = false;
-    current.voltageLow  = true;
+    current.voltageState = B00000001;
     current.alarm = true;
     if(DEBUG){
        Serial.println(F("DEBUG: VOLTAGE Low"));
     }
   }else{
-    current.voltageHigh = false;
-    current.voltageLow  = false;
+    current.voltageState = B00000000;
     if(DEBUG){
        Serial.println(F("DEBUG: Voltage Normal"));
     }
   }
-
-  // IMPORTANT - ALL ALARM DECITIONS ARE MADE ON THIS VAR!! UPDATE THE FUCKING THING WHEN U ADD MORE ALARMS!
-  // Current - TempHigh, TempLow, VoltageHigh, voltageLow
-  // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  //update the global alarm status var.
-  if (!current.tempLow && !current.tempHigh && !current.voltageLow && !current.voltageHigh && !current.humidityLow && !current.humidityHigh){
+  
+  if (current.tempState + current.humidityState + current.voltageState == 0){
     if(DEBUG){
        Serial.println(F("DEBUG: No Alarms Found"));
     }
@@ -369,9 +393,9 @@ void updateStatus(){
     }
   }
 
-  if((current.tempLow != previous.tempLow) or (current.tempHigh != previous.tempHigh) or (current.voltageLow != previous.voltageLow) or (current.voltageHigh != previous.voltageHigh) or (current.humidityLow != previous.humidityLow) or (current.humidityHigh != previous.humidityHigh)){
+  if((current.tempState != previous.tempState) or (current.humidityState != previous.humidityState) or (current.voltageState != previous.voltageState)){
     current.stateChange = true;
-  }else if((current.tempLow == previous.tempLow) and (current.tempHigh == previous.tempHigh) and (current.voltageLow == previous.voltageLow) and (current.voltageHigh == previous.voltageHigh) and (current.humidityHigh == previous.humidityHigh)  and (current.humidityLow == previous.humidityLow)){
+  }else if((current.tempState == previous.tempState) and (current.humidityState == previous.humidityState) and (current.voltageState == previous.voltageState)){
     current.stateChange = false;
   }
   
