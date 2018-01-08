@@ -15,11 +15,11 @@
 #define  IMPLEMENTATION  FIFO
 
 typedef struct message {
-  char*    text;
+  char     text[52];
   bool     sent;
 } Message;
 
-Queue  msgQueue(80, 5, IMPLEMENTATION); // Instantiate queue
+Queue  msgQueue(52, 5, IMPLEMENTATION); // Instantiate queue
 
 // SerialCommand
 char replybuffer[32];
@@ -260,9 +260,12 @@ void sendAlertString(){
     Serial.print(F("DEBUG: MESSAGE="));
     Serial.println(message_t);
   }
-  showFree();
-
-  Message message = {message_t, false};
+  if(configuration.debug){
+    showFree();
+  }
+  Message message;
+  strcpy(message.text, message_t);
+  message.sent = false;
   msgQueue.push(&message);  
   
 }
@@ -409,8 +412,11 @@ void updateStatus(){
   }else if((current.tempState == previous.tempState) and (current.humidityState == previous.humidityState) and (current.voltageState == previous.voltageState)){
     current.stateChange = false;
   }
-  showFree();
-  
+  if(configuration.debug){
+     showFree();
+  }else{
+    Serial.println("Tick...");
+  }
 }
 
 void showCurrent(){
