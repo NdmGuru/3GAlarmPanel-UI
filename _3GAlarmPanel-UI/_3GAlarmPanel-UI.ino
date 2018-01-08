@@ -82,6 +82,7 @@ struct config_t
     char  phone1[11];
     char  phone2[11];
     bool  wireless_en = true;
+    bool  debug = false;
 } configuration;
 
 void setup()
@@ -92,7 +93,7 @@ void setup()
 
   Serial.begin(9600);
   
-  if(DEBUG){
+  if(configuration.debug){
     Serial.println(F("DEBUG: BEGIN"));
   }
   Serial.println(F("Starting 3GAlarmPanel-NDM.guru V0001"));
@@ -100,7 +101,7 @@ void setup()
   
   if(configuration.wireless_en){
     
-    if(DEBUG){
+    if(configuration.debug){
       Serial.println(F("DEBUG: Wireless Enabled, starting"));
     }
     
@@ -122,16 +123,17 @@ void setup()
   SCmd.addCommand("temp",setTemp);
   SCmd.addCommand("humidity",setHumidity);
   SCmd.addCommand("wireless",setWireless);
+  SCmd.addCommand("debug",setDebug);
   SCmd.addCommand("phone",setPhone);
   SCmd.addCommand("repeat",setRepeat);
   SCmd.addCommand("voltage",setVoltage);
   SCmd.addCommand("show",showCurrent);
   SCmd.addCommand("config",showConfig);
   SCmd.addCommand("default",clearEeprom);
-  SCmd.addCommand("testsms",sendTestMessage);
+  SCmd.addCommand("network",showNetworkStatus);
   SCmd.addDefaultHandler(unrecognized);
 
-  if(DEBUG){
+  if(configuration.debug){
     showConfig();
   }
     
@@ -148,13 +150,14 @@ void loop()
   unsigned long currentMillis = millis();
 
   if(currentMillis - updatePreviousMillis > updateInterval) {
-     if(DEBUG){
+     if(configuration.debug){
        Serial.println(F("DEBUG: Update interval reached"));
      }
      updatePreviousMillis = currentMillis;
-     Serial.print(F("DEBUG: Free Memory="));
-     Serial.println(freeMemory());
-  
+     if(configuration.debug){
+      showFree();
+     }
+       
      updateStatus();
      // We need to check for new alarms each check, and send those here - Think this is the best place...
      if(current.stateChange){
@@ -166,7 +169,7 @@ void loop()
   // Handles repear Alert Messages
   if((currentMillis - current.lastAlert > configuration.alarmRepeat) or firstCheck) {
       firstCheck = false;
-       if(DEBUG){
+       if(configuration.debug){
          Serial.println(F("DEBUG: Alarm repeat interval reached"));
           if(!current.alarm){
            Serial.println(F("DEBUG: No Alarms to send"));
@@ -184,7 +187,7 @@ void loop()
 }
 
 void sendAlertString(){
-  if(DEBUG){
+  if(configuration.debug){
    Serial.println(F("DEBUG: Update Message String"));
  }
   unsigned long currentMillis = millis();
@@ -253,10 +256,11 @@ void sendAlertString(){
   }
   
   strcat(message_t,0);
-  if(DEBUG){
+  if(configuration.debug){
     Serial.print(F("DEBUG: MESSAGE="));
     Serial.println(message_t);
   }
+  showFree();
 
   Message message = {message_t, false};
   msgQueue.push(&message);  
@@ -264,7 +268,8 @@ void sendAlertString(){
 }
 
 void sendMsgs(){
-  if(DEBUG){
+  int retryCount = 0;
+  if(configuration.debug){
     Serial.println(F("DEBUG: Send Messages"));
     if(msgQueue.isEmpty()){
       Serial.println(F("DEBUG: No messages to send"));
@@ -272,27 +277,30 @@ void sendMsgs(){
   }
   if(configuration.wireless_en){
     while (!msgQueue.isEmpty()){
-      Message message;
-      msgQueue.peek(&message);
-      if(DEBUG){
-      Serial.print(F("SENDING MESSAGE: "));
-      Serial.println(message.text);
-       // Actually send the message now...
-       
-        if (!fona.sendSMS(configuration.phone1, message.text)) {
+      Message out_message;
+      msgQueue.peek(&out_message);
+      if(configuration.debug){
+        Serial.print(F("SENDING MESSAGE: "));
+        Serial.println(out_message.text);
+        showFree();
+      } 
+      while(retryCount < 3){
+        retryCount++;
+        if (!fona.sendSMS(configuration.phone1, out_message.text)) {
           Serial.println(F("Failed to send to Phone 1!"));
         } else {
           Serial.println(F("Message sent to phone 1!"));
+          break;
         }
 
-        if (!fona.sendSMS(configuration.phone2, message.text)) {
-          Serial.println(F("Failed to send to Phone 2!"));
-        } else {
-          Serial.println(F("Message sent to phone 2!"));
-        }
-
-        break;
+//        if (!fona.sendSMS(configuration.phone2, out_message.text)) {
+//          Serial.println(F("Failed to send to Phone 2!"));
+//        } else {
+//          Serial.println(F("Message sent to phone 2!"));
+//        }
       }
+      retryCount=0; // Reset after this message
+      msgQueue.pop(&out_message);
     }
   }else{
     // Wireless disabled, tell the console and bail
@@ -300,9 +308,9 @@ void sendMsgs(){
       Serial.println(F("Wireless Disabled, here's the message"));
       Serial.print(F("SENDING MESSAGE: "));
       while (!msgQueue.isEmpty()){
-        Message message;
-        msgQueue.pop(&message);
-        Serial.println(message.text);
+        Message out_message;
+        msgQueue.pop(&out_message);
+        Serial.println(out_message.text);
       }
     }
   }
@@ -310,7 +318,7 @@ void sendMsgs(){
 
 void updateStatus(){
   
-  if(DEBUG){
+  if(configuration.debug){
     Serial.println(F("DEBUG: Update Status triggered"));
   }
 
@@ -329,18 +337,18 @@ void updateStatus(){
   if(current.temp >= configuration.tempHigh){
     current.tempState = B00000010;
     current.alarm = true;
-    if(DEBUG){
+    if(configuration.debug){
        Serial.println(F("DEBUG: TEMP High"));
     }
   }else if (current.temp <= configuration.tempLow){
     current.tempState = B00000001;
     current.alarm = true;
-    if(DEBUG){
+    if(configuration.debug){
        Serial.println(F("DEBUG: TEMP Low"));
     }
   }else{
     current.tempState = B00000000;
-    if(DEBUG){
+    if(configuration.debug){
        Serial.println(F("DEBUG: Temp Normal"));
     }
   }
@@ -349,19 +357,19 @@ void updateStatus(){
   if(current.humidity >= configuration.humidityHigh){
     current.humidityState = B00000010;
     current.alarm = true;
-    if(DEBUG){
+    if(configuration.debug){
        Serial.println(F("DEBUG: HUMIDITY High"));
     }
   }else if (current.humidity <= configuration.humidityLow){
     current.humidityState = B00000001;
     current.alarm = true;
-    if(DEBUG){
+    if(configuration.debug){
        Serial.println(F("DEBUG: HUMIDITY Low"));
     }
   }else{
     current.humidityState = B00000000;
     // Track state change for dismiss messages
-    if(DEBUG){
+    if(configuration.debug){
        Serial.println(F("DEBUG: Humidity Normal"));
     }
   }
@@ -370,28 +378,28 @@ void updateStatus(){
   if(current.voltage >= configuration.voltageHigh){
     current.voltageState = B00000010;
     current.alarm = true;
-    if(DEBUG){
+    if(configuration.debug){
        Serial.println(F("DEBUG: VOLTAGE High"));
     }
   }else if (current.voltage <= configuration.voltageLow){
     current.voltageState = B00000001;
     current.alarm = true;
-    if(DEBUG){
+    if(configuration.debug){
        Serial.println(F("DEBUG: VOLTAGE Low"));
     }
   }else{
     current.voltageState = B00000000;
-    if(DEBUG){
+    if(configuration.debug){
        Serial.println(F("DEBUG: Voltage Normal"));
     }
   }
   
   if (!current.alarm){
-    if(DEBUG){
+    if(configuration.debug){
        Serial.println(F("DEBUG: No Alarms Found"));
     }
   }else{
-    if(DEBUG){
+    if(configuration.debug){
        Serial.println(F("DEBUG: Alarms Present"));
     }
   }
@@ -401,6 +409,7 @@ void updateStatus(){
   }else if((current.tempState == previous.tempState) and (current.humidityState == previous.humidityState) and (current.voltageState == previous.voltageState)){
     current.stateChange = false;
   }
+  showFree();
   
 }
 
@@ -461,6 +470,28 @@ void setWireless()
   EEPROM.put(EEPROMStart, configuration);
 }
 
+void setDebug()    
+{ 
+  char *arg;
+  int bool_en;
+
+  arg = SCmd.next(); 
+  if (arg != NULL) {
+   bool_en=atoi(arg);    
+    if(bool_en == 1){
+      configuration.debug = true;
+      Serial.println(F("Debug Enabled"));
+    }else if(bool_en == 0){
+      configuration.debug = false;
+      Serial.println(F("Debug Disabled"));
+    }
+  } else {
+    Serial.println(F("debug <bool>")); 
+    return;
+  }
+  
+  EEPROM.put(EEPROMStart, configuration);
+}
 
 void setTemp()    
 { 
@@ -558,7 +589,7 @@ void setHumidity()
 }
 
 void readSHT11(){
-  if(DEBUG){
+  if(configuration.debug){
      Serial.println(F("DEBUG: Reading SHT Temp Sensor"));
   }
   current.temp    = sht1x.readTemperatureC();
@@ -586,31 +617,6 @@ void setPhone()
 
   Serial.println(F("Phone numbers saved"));
   showConfig();
-}
-
-void sendTestMessage()    
-{ 
-  char arg[25];
-  char message[25] = "Testing message!";
- 
- if(configuration.wireless_en){
-   if(strlen(message) == 0){
-      Serial.println(F("send <message (25char)>"));
-      return;
-    }
-    
-    if (!fona.sendSMS(configuration.phone1, message)) {
-      Serial.println(F("Failed send message to phone 1"));
-    } else {
-      Serial.println(F("Sent to phone 1!"));
-    }
-  
-    if (!fona.sendSMS(configuration.phone2, message)) {
-      Serial.println(F("Failed send message to phone 2"));
-    } else {
-      Serial.println(F("Sent to phone 2!"));
-    }
-  }
 }
 
 void showConfig(){
@@ -643,6 +649,33 @@ void clearEeprom(){
     EEPROM.write(i, 0);
   }
   Serial.println(F("eepromCleared"));
+}
+
+void showNetworkStatus(){
+  // read the network/cellular status
+  uint8_t n = fona.getNetworkStatus();
+  int8_t r;
+  uint8_t rssi = fona.getRSSI();
+  
+  Serial.print(F("Network status "));
+  Serial.print(n);
+  Serial.print(F(": "));
+  if (n == 0) Serial.println(F("Not registered"));
+  if (n == 1) Serial.println(F("Registered (home)"));
+  if (n == 2) Serial.println(F("Not registered (searching)"));
+  if (n == 3) Serial.println(F("Denied"));
+  if (n == 4) Serial.println(F("Unknown"));
+  if (n == 5) Serial.println(F("Registered roaming"));
+
+  Serial.print(F("RSSI = ")); Serial.print(rssi); Serial.print(": ");
+  if (rssi == 0) r = -115;
+  if (rssi == 1) r = -111;
+  if (rssi == 31) r = -52;
+  if ((rssi >= 2) && (rssi <= 30)) {
+    r = map(rssi, 2, 30, -110, -54);
+  }
+  Serial.print(r); Serial.println(F(" dBm"));
+
 }
 
 void imei(){
@@ -689,5 +722,10 @@ void unrecognized()
   Serial.println(F("  show")); 
   Serial.println(F("  testsms")); 
   Serial.println(F("  default")); 
+}
+
+void showFree(){
+  Serial.print(F("DEBUG: Free Memory="));
+  Serial.println(freeMemory());
 }
 
