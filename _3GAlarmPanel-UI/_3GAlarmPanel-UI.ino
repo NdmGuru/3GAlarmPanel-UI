@@ -296,7 +296,7 @@ void sendMsgs(){
     }
   }else{
     // Wireless disabled, tell the console and bail
-    if(!msgQueue.isEmpty(){
+    if(!msgQueue.isEmpty()){
       Serial.println(F("Wireless Disabled, here's the message"));
       Serial.print(F("SENDING MESSAGE: "));
       while (!msgQueue.isEmpty()){
@@ -309,11 +309,15 @@ void sendMsgs(){
 }
 
 void updateStatus(){
-  current.stateChange = false;
+  
   if(DEBUG){
     Serial.println(F("DEBUG: Update Status triggered"));
   }
 
+  // Assume we have no alarms or state change
+  current.alarm = false;  
+  current.stateChange = false;
+  
   // Copy current state to previous state
   previous = current;
   
@@ -382,11 +386,10 @@ void updateStatus(){
     }
   }
   
-  if (current.tempState + current.humidityState + current.voltageState == 0){
+  if (!current.alarm){
     if(DEBUG){
        Serial.println(F("DEBUG: No Alarms Found"));
     }
-    current.alarm = false;
   }else{
     if(DEBUG){
        Serial.println(F("DEBUG: Alarms Present"));
