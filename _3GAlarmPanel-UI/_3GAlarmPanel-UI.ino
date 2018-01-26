@@ -6,8 +6,27 @@
 #include <SerialCommand.h>
 #include <EEPROM.h>
 
+// PIN NUMBERS
+// Digital
+// Used :  0,1,2,3,4,5,8,9,13
+// Free :  6,7,10,11,12
+// Analog
+// Used:   0,1
+// Free:   2,3,4,5
+
+#define FONA_TX 2
+#define FONA_RX 3
+#define FONA_RST 9
+#define FONA_PWR 8
+
+#define SHT11_DATA  5
+#define SHT11_CLOCK 4
+#define LED_PWR    13
+#define VOLTAGE_DATA0 A0
+#define VOLTAGE_DATA1 A1
+
 // General Vars
-#define arduinoLED 13   // Arduino LED on board
+
 #define EEPROMStart 513 // Start write and read for EEPROM
 #define NUM_SAMPLES 10  // number of analog samples to take per voltage reading
 
@@ -24,15 +43,6 @@ Queue  msgQueue(52, 5, IMPLEMENTATION); // Instantiate queue
 // SerialCommand
 char replybuffer[32];
 SerialCommand SCmd;
-
-// FONA Settings
-#define FONA_TX 2
-#define FONA_RX 3
-#define FONA_RST 9
-
-// Specify data and clock connections and instantiate SHT1x object
-#define SHT11_DATA  5
-#define SHT11_CLOCK 4
 
 SHT1x sht1x(SHT11_DATA, SHT11_CLOCK);
 
@@ -106,10 +116,10 @@ void setup()
     }
     
     Serial.println(F("Initializing wireless...."));
-    pinMode(8, OUTPUT);
-    digitalWrite(8, HIGH);
+    pinMode(FONA_PWR, OUTPUT);
+    digitalWrite(FONA_PWR, HIGH);
     delay(4000);
-    digitalWrite(8, LOW);
+    digitalWrite(FONA_PWR, LOW);
     delay(2000);
     
     fonaSerial->begin(4800);
@@ -703,7 +713,7 @@ void readVoltage(){
     float voltage = 0.0;  
   
      while (sample_count < NUM_SAMPLES) {
-        sum += analogRead(A0);
+        sum += analogRead(VOLTAGE_DATA1);
         sample_count++;
         delay(10);
     }
