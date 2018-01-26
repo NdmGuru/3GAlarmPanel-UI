@@ -21,12 +21,13 @@
 
 #define SHT11_DATA  5
 #define SHT11_CLOCK 4
+
 #define LED_PWR    13
+
 #define VOLTAGE_DATA0 A0
 #define VOLTAGE_DATA1 A1
 
 // General Vars
-
 #define EEPROMStart 513 // Start write and read for EEPROM
 #define NUM_SAMPLES 10  // number of analog samples to take per voltage reading
 
@@ -71,7 +72,7 @@ struct STATE
   byte  humidityState;
   int   humidity     ;
 
-  float lastAlert = 0; // High so we trigger on first alert?
+  float lastAlert = 0;
   bool  alarm        ;
   bool  stateChange  ;
 };
@@ -155,8 +156,6 @@ void setup()
 
 void loop()
 {  
-  
-  // Basic timing here, may need to get ALOT more complicated...
   unsigned long currentMillis = millis();
 
   if(currentMillis - updatePreviousMillis > (updateInterval * 1000)) {
@@ -176,7 +175,7 @@ void loop()
      sendMsgs();
   }
 
-  // Handles repear Alert Messages
+  // Handles repeat Alert Messages
   if((currentMillis - current.lastAlert > configuration.alarmRepeat) or firstCheck) {
       firstCheck = false;
        if(configuration.debug){
