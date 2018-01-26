@@ -8,41 +8,55 @@
 
 // PIN NUMBERS
 // Digital
-// Used :  0,1,2,3,4,5,8,9,13
-// Free :  6,7,10,11,12
+// Used :  0,1,2,3,4,5,6,7,8,9
+// Free :  10,11,12,13
 // Analog
 // Used:   0,1
 // Free:   2,3,4,5
 
+// General Control
+#define DEBUG true
+
+// FONA Pins
 #define FONA_TX 2
 #define FONA_RX 3
 #define FONA_RST 9
 #define FONA_PWR 8
 
+// SHT11 Pins
 #define SHT11_DATA  5
 #define SHT11_CLOCK 4
 
-#define LED_PWR    13
+// LED Pins
+#define LED_GREEN  6
+#define LED_RED    7
 
+// Voltage Devider Pins
 #define VOLTAGE_DATA0 A0
 #define VOLTAGE_DATA1 A1
 
 // General Vars
 #define EEPROMStart 513 // Start write and read for EEPROM
-#define NUM_SAMPLES 10  // number of analog samples to take per voltage reading
+#define NUM_SAMPLES 10   // number of analog samples to take per voltage reading
+
+// Serial Buffer
+#define MAX_CMD_LEN 22
 
 // Queue for SMS Messages
+#define  MAX_MSG_LEN      56
+#define  MAX_MSG_NUM      2
 #define  IMPLEMENTATION  FIFO
 
+// Our Message Structure
 typedef struct message {
-  char     text[52];
-  bool     sent;
+  char     text[MAX_MSG_LEN];
+  bool     send = false; 
 } Message;
 
-Queue  msgQueue(52, 5, IMPLEMENTATION); // Instantiate queue
+Queue  msgQueue(sizeof(Message), MAX_MSG_NUM, IMPLEMENTATION); // Instantiate queue
 
 // SerialCommand
-char replybuffer[32];
+char replybuffer[MAX_CMD_LEN];
 SerialCommand SCmd;
 
 SHT1x sht1x(SHT11_DATA, SHT11_CLOCK);
@@ -53,14 +67,18 @@ SoftwareSerial *fonaSerial = &fonaSS;
 Adafruit_FONA_3G fona = Adafruit_FONA_3G(FONA_RST);
 
 // Timing
+static unsigned long   previousLedMillis        = 0; 
+static unsigned long   ledFlashInterval         = 500; 
 static unsigned long   updatePreviousMillis     = 0;     // last time update
 static int             updateInterval           = 5;     // How often to check sensors 5 seconds
 bool                   firstCheck               = true;
 
-// General Control
-#define DEBUG true
+// LED States:
+int ledGreenState = LOW;
+int ledRedState = LOW;
+int ledOrangeState = LOW;
 
-// 
+// Our current State
 struct STATE
 {
   byte  tempState    ;
@@ -99,6 +117,9 @@ struct config_t
 void setup()
 {   
 
+  pinMode(LED_RED, OUTPUT);
+  pinMode(LED_GREEN, OUTPUT);
+  
   //Read our last state from EEPROM
   EEPROM.get(EEPROMStart, configuration);
 
@@ -156,6 +177,8 @@ void setup()
 
 void loop()
 {  
+  blink(B000001);
+  
   unsigned long currentMillis = millis();
 
   if(currentMillis - updatePreviousMillis > (updateInterval * 1000)) {
@@ -194,553 +217,3 @@ void loop()
   // Read the serial buffer and run commands
   SCmd.readSerial();     
 }
-
-void sendAlertString(){
-  if(configuration.debug){
-   Serial.println(F("DEBUG: Update Message String"));
- }
-  unsigned long currentMillis = millis();
-  char message_t[52] = "";
-  char currentTemp[6] = "";
-  char currentVoltage[6] = "";
-  char currentHumidity[6] = "";
-  
-  dtostrf(current.temp, 5, 2, currentTemp);
-  dtostrf(current.voltage, 5, 2, currentVoltage);
-  dtostrf(current.humidity, 5, 2, currentHumidity);
-
-  switch(current.tempState){
-    case B00000000:
-      strcat(message_t,"TEMP OK:");
-      strcat(message_t, currentTemp);
-      strcat(message_t, " ");
-      break;
-    case B00000001:
-      strcat(message_t,"TEMP LOW:");
-      strcat(message_t, currentTemp);
-      strcat(message_t, " ");
-      break;
-    case B00000010:
-      strcat(message_t,"TEMP HIGH:");
-      strcat(message_t, currentTemp);
-      strcat(message_t, " ");
-      break;
-  }
-
-  switch(current.humidityState){
-    case B00000000:
-      strcat(message_t,"HUMIDITY OK:");
-      strcat(message_t, currentHumidity);
-      strcat(message_t, " ");
-      break;
-    case B00000001:
-      strcat(message_t,"HUMIDITY LOW:");
-      strcat(message_t, currentHumidity);
-      strcat(message_t, " ");
-      break;
-    case B00000010:
-      strcat(message_t,"HUMIDITY HIGH:");
-      strcat(message_t, currentHumidity);
-      strcat(message_t, " ");
-      break;
-  }
-
-  
-  switch(current.voltageState){
-    case B00000000:
-      strcat(message_t,"VOLTAGE OK:");
-      strcat(message_t, currentVoltage);
-      strcat(message_t, " ");
-      break;
-    case B00000001:
-      strcat(message_t,"VOLTAGE LOW:");
-      strcat(message_t, currentVoltage);
-      strcat(message_t, " ");
-      break;
-    case B00000010:
-      strcat(message_t,"VOLTAGE HIGH:");
-      strcat(message_t, currentVoltage);
-      strcat(message_t, " ");
-      break;
-  }
-  
-  strcat(message_t,0);
-  if(configuration.debug){
-    Serial.print(F("DEBUG: MESSAGE="));
-    Serial.println(message_t);
-  }
-  if(configuration.debug){
-    showFree();
-  }
-  Message message;
-  strcpy(message.text, message_t);
-  message.sent = false;
-  msgQueue.push(&message);  
-  
-}
-
-void sendMsgs(){
-  int retryCount = 0;
-  if(configuration.debug){
-    Serial.println(F("DEBUG: Send Messages"));
-    if(msgQueue.isEmpty()){
-      Serial.println(F("DEBUG: No messages to send"));
-    }
-  }
-  if(configuration.wireless_en){
-    while (!msgQueue.isEmpty()){
-      Message out_message;
-      msgQueue.peek(&out_message);
-      if(configuration.debug){
-        Serial.print(F("SENDING MESSAGE: "));
-        Serial.println(out_message.text);
-        showFree();
-      } 
-      while(retryCount < 3){
-        retryCount++;
-        if (!fona.sendSMS(configuration.phone1, out_message.text)) {
-          Serial.println(F("Failed to send to Phone 1!"));
-        } else {
-          Serial.println(F("Message sent to phone 1!"));
-          break;
-        }
-
-//        if (!fona.sendSMS(configuration.phone2, out_message.text)) {
-//          Serial.println(F("Failed to send to Phone 2!"));
-//        } else {
-//          Serial.println(F("Message sent to phone 2!"));
-//        }
-      }
-      retryCount=0; // Reset after this message
-      msgQueue.pop(&out_message);
-    }
-  }else{
-    // Wireless disabled, tell the console and bail
-    if(!msgQueue.isEmpty()){
-      Serial.println(F("Wireless Disabled, here's the message"));
-      Serial.print(F("SENDING MESSAGE: "));
-      while (!msgQueue.isEmpty()){
-        Message out_message;
-        msgQueue.pop(&out_message);
-        Serial.println(out_message.text);
-      }
-    }
-  }
-}
-
-void updateStatus(){
-  
-  if(configuration.debug){
-    Serial.println(F("DEBUG: Update Status triggered"));
-  }
-
-  // Assume we have no alarms or state change
-  current.alarm = false;  
-  current.stateChange = false;
-  
-  // Copy current state to previous state
-  previous = current;
-  
-  // Update the temp/humidity sensors
-  readSHT11();
-  readVoltage();
-  
-  // Update TEMP status
-  if(current.temp >= configuration.tempHigh){
-    current.tempState = B00000010;
-    current.alarm = true;
-    if(configuration.debug){
-       Serial.println(F("DEBUG: TEMP High"));
-    }
-  }else if (current.temp <= configuration.tempLow){
-    current.tempState = B00000001;
-    current.alarm = true;
-    if(configuration.debug){
-       Serial.println(F("DEBUG: TEMP Low"));
-    }
-  }else{
-    current.tempState = B00000000;
-    if(configuration.debug){
-       Serial.println(F("DEBUG: Temp Normal"));
-    }
-  }
-
-  // Update HUMIDITY status
-  if(current.humidity >= configuration.humidityHigh){
-    current.humidityState = B00000010;
-    current.alarm = true;
-    if(configuration.debug){
-       Serial.println(F("DEBUG: HUMIDITY High"));
-    }
-  }else if (current.humidity <= configuration.humidityLow){
-    current.humidityState = B00000001;
-    current.alarm = true;
-    if(configuration.debug){
-       Serial.println(F("DEBUG: HUMIDITY Low"));
-    }
-  }else{
-    current.humidityState = B00000000;
-    // Track state change for dismiss messages
-    if(configuration.debug){
-       Serial.println(F("DEBUG: Humidity Normal"));
-    }
-  }
-
-  // Update VOLTAGE status
-  if(current.voltage >= configuration.voltageHigh){
-    current.voltageState = B00000010;
-    current.alarm = true;
-    if(configuration.debug){
-       Serial.println(F("DEBUG: VOLTAGE High"));
-    }
-  }else if (current.voltage <= configuration.voltageLow){
-    current.voltageState = B00000001;
-    current.alarm = true;
-    if(configuration.debug){
-       Serial.println(F("DEBUG: VOLTAGE Low"));
-    }
-  }else{
-    current.voltageState = B00000000;
-    if(configuration.debug){
-       Serial.println(F("DEBUG: Voltage Normal"));
-    }
-  }
-  
-  if (!current.alarm){
-    if(configuration.debug){
-       Serial.println(F("DEBUG: No Alarms Found"));
-    }
-  }else{
-    if(configuration.debug){
-       Serial.println(F("DEBUG: Alarms Present"));
-    }
-  }
-
-  if((current.tempState != previous.tempState) or (current.humidityState != previous.humidityState) or (current.voltageState != previous.voltageState)){
-    current.stateChange = true;
-  }else if((current.tempState == previous.tempState) and (current.humidityState == previous.humidityState) and (current.voltageState == previous.voltageState)){
-    current.stateChange = false;
-  }
-  if(configuration.debug){
-     showFree();
-  }else{
-    Serial.println("Tick...");
-  }
-}
-
-void showCurrent(){
-  // Print the values to the serial port - Menu triggered
-  Serial.print(F("Temperature: "));
-  Serial.print(current.temp, DEC);
-  Serial.print(F("C"));
-  Serial.print(F(" Humidity: "));
-  Serial.print(current.humidity, DEC);
-  Serial.print(F("%"));
-  Serial.print(F(" Voltage: "));
-  Serial.print(current.voltage, DEC);
-  Serial.println(F("V")); 
-}
-
-
-void setRepeat()    
-{ 
-  char *arg; 
-
-  arg = SCmd.next(); 
-  if (arg != NULL) 
-  {
-    configuration.alarmRepeat=atoi(arg);    // Converts a char string to an integer
-    configuration.alarmRepeat=configuration.alarmRepeat * 60000 ;
-    Serial.print(F("Repeat: ")); 
-    Serial.println(configuration.alarmRepeat / 60000); 
-  } 
-  else {
-    Serial.println(F("repeat <time in minutes>")); 
-    return;
-  }
-
-  EEPROM.put(EEPROMStart, configuration);
-}
-
-void setWireless()    
-{ 
-  char *arg;
-  int bool_en;
-
-  arg = SCmd.next(); 
-  if (arg != NULL) {
-   bool_en=atoi(arg);    
-    if(bool_en == 1){
-      configuration.wireless_en = true;
-      Serial.println(F("Wireless Enabled"));
-    }else if(bool_en == 0){
-      configuration.wireless_en = false;
-      Serial.println(F("Wireless Disabled"));
-    }
-  } else {
-    Serial.println(F("wireless <bool>")); 
-    return;
-  }
-
-  EEPROM.put(EEPROMStart, configuration);
-}
-
-void setDebug()    
-{ 
-  char *arg;
-  int bool_en;
-
-  arg = SCmd.next(); 
-  if (arg != NULL) {
-   bool_en=atoi(arg);    
-    if(bool_en == 1){
-      configuration.debug = true;
-      Serial.println(F("Debug Enabled"));
-    }else if(bool_en == 0){
-      configuration.debug = false;
-      Serial.println(F("Debug Disabled"));
-    }
-  } else {
-    Serial.println(F("debug <bool>")); 
-    return;
-  }
-  
-  EEPROM.put(EEPROMStart, configuration);
-}
-
-void setTemp()    
-{ 
-  char *tempHigh; 
-  char *tempLow;
-
-  int tempHigh_t;
-  int tempLow_t;
-  
-  tempHigh = SCmd.next(); 
-  tempLow  = SCmd.next();
-
-  if((tempHigh == NULL) or (tempLow == NULL)){
-    Serial.println(F("TEMP <HIGH> <LOW>")); 
-    return;
-  }
-  
-  tempHigh_t=atoi(tempHigh);    // Converts a char string to an integer
-  tempLow_t =atoi(tempLow);    // Converts a char string to an integer
-  
-  if((tempHigh_t <= tempLow_t)){
-    Serial.println(F("Temp rang error")); 
-    Serial.println(F("TEMP <HIGH> <LOW>")); 
-    return;
-  }
-
-  configuration.tempHigh = tempHigh_t;
-  configuration.tempLow  = tempLow_t;
-
-  EEPROM.put(EEPROMStart, configuration);
-  showConfig();
-}
-
-void setVoltage()    
-{ 
-  char *voltageHigh; 
-  char *voltageLow;
-
-  int voltageHigh_t;
-  int voltageLow_t;
-  
-  voltageHigh = SCmd.next(); 
-  voltageLow  = SCmd.next();
-
-  if((voltageHigh == NULL) or (voltageLow == NULL)){
-    Serial.println(F("VOLTAGE <HIGH> <LOW>")); 
-    return;
-  }
-  
-  voltageHigh_t=atoi(voltageHigh);    // Converts a char string to an integer
-  voltageLow_t =atoi(voltageLow);    // Converts a char string to an integer
-  
-  if((voltageHigh_t <= voltageLow_t)){
-    Serial.println(F("Voltage range error")); 
-    Serial.println(F("VOLTAGE <HIGH> <LOW>")); 
-    return;
-  }
-
-  configuration.voltageHigh = voltageHigh_t;
-  configuration.voltageLow  = voltageLow_t;
-
-  EEPROM.put(EEPROMStart, configuration);
-  showConfig();
-}
-void setHumidity()    
-{ 
-  char *humidityHigh; 
-  char *humidityLow;
-
-  int humidityHigh_t;
-  int humidityLow_t;
-  
-  humidityHigh = SCmd.next(); 
-  humidityLow  = SCmd.next();
-
-  if((humidityHigh == NULL) or (humidityLow == NULL)){
-    Serial.println(F("HUMIDITY <HIGH> <LOW>")); 
-    return;
-  }
-  
-  humidityHigh_t=atoi(humidityHigh);    // Converts a char string to an integer
-  humidityLow_t =atoi(humidityLow);    // Converts a char string to an integer
-  
-  if((humidityHigh_t <= humidityLow_t)){
-    Serial.println(F("Humidity rang error")); 
-    Serial.println(F("HUMIDITY <HIGH> <LOW>")); 
-    return;
-  }
-
-  configuration.humidityHigh = humidityHigh_t;
-  configuration.humidityLow  = humidityLow_t;
-
-  EEPROM.put(EEPROMStart, configuration);
-  showConfig();
-}
-
-void readSHT11(){
-  if(configuration.debug){
-     Serial.println(F("DEBUG: Reading SHT Temp Sensor"));
-  }
-  current.temp    = sht1x.readTemperatureC();
-  current.humidity  = sht1x.readHumidity();
-}
-
-void setPhone()    
-{ 
-  char arg[11];
-  char phone1[11];
-  char phone2[11];
-
-  strlcpy(phone1, SCmd.next(),11);
-  strlcpy(phone2, SCmd.next(),11);
-  
- if(strlen(phone1) == 0 or strlen(phone2) == 0){
-    Serial.println(F("phone <phone1> <phone2>"));
-    return;
-  }
-  
-  strlcpy(configuration.phone1, phone1, 11);
-  strlcpy(configuration.phone2, phone2, 11);
-  
-  EEPROM.put(EEPROMStart, configuration);
-
-  Serial.println(F("Phone numbers saved"));
-  showConfig();
-}
-
-void showConfig(){
-  Serial.println(F("Reading Config from EEPROM:")); 
-  EEPROM.get(EEPROMStart, configuration);
-  Serial.println(F("Current Config:")); 
-  Serial.print(F("    Temp High: ")); 
-  Serial.println(configuration.tempHigh); 
-  Serial.print(F("    Temp Low: ")); 
-  Serial.println(configuration.tempLow);
-  Serial.print(F("    Humidiry High: ")); 
-  Serial.println(configuration.humidityHigh); 
-  Serial.print(F("    Humidity Low: ")); 
-  Serial.println(configuration.humidityLow);
-  Serial.print(F("    Voltage High: ")); 
-  Serial.println(configuration.voltageHigh); 
-  Serial.print(F("    Voltage Low: ")); 
-  Serial.println(configuration.voltageLow);
-  Serial.print(F("    Phone 1: ")); 
-  Serial.println(configuration.phone1); 
-  Serial.print(F("    Phone 2: ")); 
-  Serial.println(configuration.phone2);
-  Serial.print(F("    Repeat: ")); 
-  Serial.println(configuration.alarmRepeat / 60000);
-
-}
-
-void clearEeprom(){
-   for (int i = 0 ; i < EEPROM.length() ; i++) {
-    EEPROM.write(i, 0);
-  }
-  Serial.println(F("eepromCleared"));
-}
-
-void showNetworkStatus(){
-  // read the network/cellular status
-  uint8_t n = fona.getNetworkStatus();
-  int8_t r;
-  uint8_t rssi = fona.getRSSI();
-  
-  Serial.print(F("Network status "));
-  Serial.print(n);
-  Serial.print(F(": "));
-  if (n == 0) Serial.println(F("Not registered"));
-  if (n == 1) Serial.println(F("Registered (home)"));
-  if (n == 2) Serial.println(F("Not registered (searching)"));
-  if (n == 3) Serial.println(F("Denied"));
-  if (n == 4) Serial.println(F("Unknown"));
-  if (n == 5) Serial.println(F("Registered roaming"));
-
-  Serial.print(F("RSSI = ")); Serial.print(rssi); Serial.print(": ");
-  if (rssi == 0) r = -115;
-  if (rssi == 1) r = -111;
-  if (rssi == 31) r = -52;
-  if ((rssi >= 2) && (rssi <= 30)) {
-    r = map(rssi, 2, 30, -110, -54);
-  }
-  Serial.print(r); Serial.println(F(" dBm"));
-
-}
-
-void imei(){
-  if(configuration.wireless_en){
-    // Print module IMEI number.
-    char imei[15] = {0}; // MUST use a 16 character buffer for IMEI!
-    uint8_t imeiLen = fona.getIMEI(imei);
-    if (imeiLen > 0) {
-      Serial.print(F("Module IMEI: ")); Serial.println(imei);
-    }
-  }else{
-    Serial.println(F("Enable wireless to show imei"));
-  }
-}
-
-void readVoltage(){
-    int sum = 0;                    // sum of samples taken
-    unsigned char sample_count = 0;
-    float voltage = 0.0;  
-  
-     while (sample_count < NUM_SAMPLES) {
-        sum += analogRead(VOLTAGE_DATA1);
-        sample_count++;
-        delay(10);
-    }
-
-    voltage = ((float)sum / (float)NUM_SAMPLES * 5.015) / 1024.0;
-    current.voltage = voltage * 11.132;
-    
-    sample_count = 0;
-    sum = 0;
-}
-
-// This gets set as the default handler, and gets called when no other command matches. 
-void unrecognized()
-{
-  Serial.println(F("Commands:")); 
-  Serial.println(F("  phone <number1> <number2>")); 
-  Serial.println(F("  temp <high> <low>")); 
-  Serial.println(F("  humidity <high> <low>")); 
-  Serial.println(F("  voltage <high> <low>")); 
-  Serial.println(F("  repeat <minutes>")); 
-  Serial.println(F("  config")); 
-  Serial.println(F("  show")); 
-  Serial.println(F("  testsms")); 
-  Serial.println(F("  default")); 
-}
-
-void showFree(){
-  Serial.print(F("DEBUG: Free Memory="));
-  Serial.println(freeMemory());
-}
-
