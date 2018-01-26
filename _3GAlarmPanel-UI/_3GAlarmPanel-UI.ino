@@ -1,6 +1,6 @@
 #include <cppQueue.h>
 #include <MemoryFree.h>
-#include <SHT1x.h>
+#include <Sensirion.h>
 #include <Adafruit_FONA.h>
 #include <SoftwareSerial.h> 
 #include <SerialCommand.h>
@@ -26,14 +26,23 @@
 // SHT11 Pins
 #define SHT11_DATA  5
 #define SHT11_CLOCK 4
+const unsigned long TRHSTEP   = 5000UL;  // Sensor query period
+
+unsigned int rawData;
+float temperature;
+float humidity;
 
 // LED Pins
-#define LED_GREEN  6
-#define LED_RED    7
+#define LED_GREEN  7
+#define LED_RED    6
+#define RED        B00000010
+#define GREEN      B00000001
+#define ORANGE     B00000011
+#define OFF        B00000000
 
 // Voltage Devider Pins
-#define VOLTAGE_DATA0 A0
-#define VOLTAGE_DATA1 A1
+#define VOLTAGE_DATA0 A0 // This should be input voltage
+#define VOLTAGE_DATA1 A1 // This should be battery voltage
 
 // General Vars
 #define EEPROMStart 513 // Start write and read for EEPROM
@@ -59,7 +68,12 @@ Queue  msgQueue(sizeof(Message), MAX_MSG_NUM, IMPLEMENTATION); // Instantiate qu
 char replybuffer[MAX_CMD_LEN];
 SerialCommand SCmd;
 
-SHT1x sht1x(SHT11_DATA, SHT11_CLOCK);
+// SHT11 Sensor
+#define ENA_ERRCHK  // Enable error checking code
+byte error = 0;
+byte measActive = false;
+byte measType = TEMP;
+Sensirion sht = Sensirion(SHT11_DATA, SHT11_CLOCK);
 
 // FONA
 SoftwareSerial fonaSS = SoftwareSerial(FONA_TX,FONA_RX);
@@ -67,6 +81,7 @@ SoftwareSerial *fonaSerial = &fonaSS;
 Adafruit_FONA_3G fona = Adafruit_FONA_3G(FONA_RST);
 
 // Timing
+static unsigned long   trhMillis                = 0;             // Time interval tracking
 static unsigned long   previousLedMillis        = 0; 
 static unsigned long   ledFlashInterval         = 500; 
 static unsigned long   updatePreviousMillis     = 0;     // last time update
@@ -85,7 +100,9 @@ struct STATE
   int   temp         ;
   
   byte  voltageState ;
-  int   voltage      ;
+  int   voltageIn    ;
+  int   voltageBatt  ;
+  
   
   byte  humidityState;
   int   humidity     ;
@@ -108,8 +125,7 @@ struct config_t
     int   humidityHigh;
     int   humidityLow;    
     long  alarmRepeat;
-    char  phone1[11];
-    char  phone2[11];
+    char  phone[2][11];
     bool  wireless_en = true;
     bool  debug = false;
 } configuration;
@@ -119,7 +135,8 @@ void setup()
 
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_GREEN, OUTPUT);
-  
+
+  led(ORANGE);
   //Read our last state from EEPROM
   EEPROM.get(EEPROMStart, configuration);
 
@@ -177,8 +194,8 @@ void setup()
 
 void loop()
 {  
-  blink(B000001);
-  
+  updateLeds();
+
   unsigned long currentMillis = millis();
 
   if(currentMillis - updatePreviousMillis > (updateInterval * 1000)) {

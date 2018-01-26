@@ -174,8 +174,8 @@ void setPhone()
     return;
   }
   
-  strlcpy(configuration.phone1, phone1, 11);
-  strlcpy(configuration.phone2, phone2, 11);
+  strlcpy(configuration.phone[0], phone1, 11);
+  strlcpy(configuration.phone[1], phone2, 11);
   
   EEPROM.put(EEPROMStart, configuration);
 

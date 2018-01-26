@@ -11,7 +11,7 @@ void sendAlertString(){
   char currentHumidity[7] = "";
   
   dtostrf(current.temp, 5, 2, currentTemp);
-  dtostrf(current.voltage, 5, 2, currentVoltage);
+  dtostrf(current.voltageIn, 5, 2, currentVoltage);
   dtostrf(current.humidity, 5, 2, currentHumidity);
 
   switch(current.tempState){
@@ -97,12 +97,13 @@ void sendMsgs(){
       msgQueue.peek(&out_message);
       if(configuration.debug){
         Serial.print(F("SENDING MESSAGE: "));
-        Serial.println(out_message.text);
         showFree();
+        Serial.println(out_message.text);
+
       } 
       while(retryCount < 3){
         retryCount++;
-        if (!fona.sendSMS(configuration.phone1, out_message.text)) {
+        if (!fona.sendSMS(configuration.phone[0], out_message.text)) {
           Serial.println(F("Failed to send to Phone 1!"));
         } else {
           Serial.println(F("Message sent to phone 1!"));
@@ -120,7 +121,6 @@ void sendMsgs(){
     }
   }else{
     // Wireless disabled, tell the console and bail
-    showFree();
     if(!msgQueue.isEmpty()){
       Serial.println(F("Wireless Disabled, here's the message"));
       Serial.print(F("SENDING MESSAGE: "));
@@ -142,7 +142,7 @@ void showCurrent(){
   Serial.print(current.humidity, DEC);
   Serial.print(F("%"));
   Serial.print(F(" Voltage: "));
-  Serial.print(current.voltage, DEC);
+  Serial.print(current.voltageIn, DEC);
   Serial.println(F("V")); 
 }
 
@@ -210,9 +210,9 @@ void showConfig(){
   Serial.print(F("    Voltage Low: ")); 
   Serial.println(configuration.voltageLow);
   Serial.print(F("    Phone 1: ")); 
-  Serial.println(configuration.phone1); 
+  Serial.println(configuration.phone[0]); 
   Serial.print(F("    Phone 2: ")); 
-  Serial.println(configuration.phone2);
+  Serial.println(configuration.phone[1]);
   Serial.print(F("    Repeat: ")); 
   Serial.println(configuration.alarmRepeat / 60000);
 }
@@ -230,23 +230,34 @@ void imei(){
   }
 }
 
-void LED(byte colour){
+void led(byte colour){
   switch(colour){
-    //Green
-    case B000000:
+    case OFF:
       digitalWrite(LED_GREEN, LOW);
-      digitalWrite(LED_GREEN, LOW);
+      digitalWrite(LED_RED, LOW);
       break;
-    case B000001:
+    case GREEN:
       digitalWrite(LED_GREEN, HIGH);
+      digitalWrite(LED_RED, LOW);
       break;
-    case B000010:
+    case RED:
+      digitalWrite(LED_RED, HIGH);
+      digitalWrite(LED_GREEN, LOW);
+      break;
+    case ORANGE:
+      digitalWrite(LED_GREEN, HIGH);
       digitalWrite(LED_RED, HIGH);
       break;
-    case B000011:
-      digitalWrite(LED_GREEN, HIGH);
-      digitalWrite(LED_RED, HIGH);
-      break;
+   }
+}
+
+void updateLeds(){
+  if(current.alarm){
+    led(RED);
+    return;;
+  }else{
+    led(GREEN);
+    return;
   }
 }
 
@@ -289,4 +300,3 @@ void blink(byte colour){
       }
   }
 }
-

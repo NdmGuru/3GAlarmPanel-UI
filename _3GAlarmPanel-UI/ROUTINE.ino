@@ -1,5 +1,5 @@
 void updateStatus(){
-  
+  led(ORANGE);
   if(configuration.debug){
     Serial.println(F("DEBUG: Update Status triggered"));
   }
@@ -13,7 +13,7 @@ void updateStatus(){
   
   // Update the temp/humidity sensors
   readSHT11();
-  readVoltage();
+  readVoltage(0);
   
   // Update TEMP status
   if(current.temp >= configuration.tempHigh){
@@ -57,13 +57,13 @@ void updateStatus(){
   }
 
   // Update VOLTAGE status
-  if(current.voltage >= configuration.voltageHigh){
+  if(current.voltageIn >= configuration.voltageHigh){
     current.voltageState = B00000010;
     current.alarm = true;
     if(configuration.debug){
        Serial.println(F("DEBUG: VOLTAGE High"));
     }
-  }else if (current.voltage <= configuration.voltageLow){
+  }else if (current.voltageIn <= configuration.voltageLow){
     current.voltageState = B00000001;
     current.alarm = true;
     if(configuration.debug){
@@ -77,10 +77,12 @@ void updateStatus(){
   }
   
   if (!current.alarm){
+    led(B000001);
     if(configuration.debug){
        Serial.println(F("DEBUG: No Alarms Found"));
     }
   }else{
+    led(B000010);
     if(configuration.debug){
        Serial.println(F("DEBUG: Alarms Present"));
     }
