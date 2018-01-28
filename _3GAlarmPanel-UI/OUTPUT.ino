@@ -1,149 +1,18 @@
-void sendAlertString(){
-  if(configuration.debug){
-   Serial.println(F("DEBUG: Update Message String"));
- }
-  unsigned long currentMillis = millis();
-  char message_t[MAX_MSG_LEN] = "";
-  // These are 7 in length because we can have "-00.00\n"
-  // This was a major cause of memory overwrite!
-  char currentTemp[7] = "";
-  char currentVoltage[7] = "";
-  char currentHumidity[7] = "";
-  
-  dtostrf(current.temp, 5, 2, currentTemp);
-  dtostrf(current.voltageIn, 5, 2, currentVoltage);
-  dtostrf(current.humidity, 5, 2, currentHumidity);
-
-  switch(current.tempState){
-    case B00000000:
-      strcat(message_t,"TEMP OK:");
-      strcat(message_t, currentTemp);
-      strcat(message_t, " ");
-      break;
-    case B00000001:
-      strcat(message_t,"TEMP LOW:");
-      strcat(message_t, currentTemp);
-      strcat(message_t, " ");
-      break;
-    case B00000010:
-      strcat(message_t,"TEMP HIGH:");
-      strcat(message_t, currentTemp);
-      strcat(message_t, " ");
-      break;
-  }
-
-  switch(current.humidityState){
-    case B00000000:
-      strcat(message_t,"HUMIDITY OK:");
-      strcat(message_t, currentHumidity);
-      strcat(message_t, " ");
-      break;
-    case B00000001:
-      strcat(message_t,"HUMIDITY LOW:");
-      strcat(message_t, currentHumidity);
-      strcat(message_t, " ");
-      break;
-    case B00000010:
-      strcat(message_t,"HUMIDITY HIGH:");
-      strcat(message_t, currentHumidity);
-      strcat(message_t, " ");
-      break;
-  }
-
-  
-  switch(current.voltageState){
-    case B00000000:
-      strcat(message_t,"VOLTAGE OK:");
-      strcat(message_t, currentVoltage);
-      strcat(message_t, " ");
-      break;
-    case B00000001:
-      strcat(message_t,"VOLTAGE LOW:");
-      strcat(message_t, currentVoltage);
-      strcat(message_t, " ");
-      break;
-    case B00000010:
-      strcat(message_t,"VOLTAGE HIGH:");
-      strcat(message_t, currentVoltage);
-      strcat(message_t, " ");
-      break;
-  }
-  
-  strcat(message_t,0);
-  if(configuration.debug){
-    Serial.print(F("DEBUG: MESSAGE="));
-    Serial.println(message_t);
-  }
-  if(configuration.debug){
-    showFree();
-  }
-  Message message;
-  strcpy(message.text, message_t);
-  msgQueue.push(&message);  
-}
-
-void sendMsgs(){
-  Message out_message ;
-  int retryCount = 0;
-  
-  if(configuration.debug){
-    Serial.println(F("DEBUG: Send Messages"));
-    if(msgQueue.isEmpty()){
-      Serial.println(F("DEBUG: No messages to send"));
-    }
-  }
-  if(configuration.wireless_en){
-    while (!msgQueue.isEmpty()){
-      msgQueue.peek(&out_message);
-      if(configuration.debug){
-        Serial.print(F("SENDING MESSAGE: "));
-        showFree();
-        Serial.println(out_message.text);
-
-      } 
-      while(retryCount < 3){
-        retryCount++;
-        if (!fona.sendSMS(configuration.phone[0], out_message.text)) {
-          Serial.println(F("Failed to send to Phone 1!"));
-        } else {
-          Serial.println(F("Message sent to phone 1!"));
-          break;
-        }
-
-//        if (!fona.sendSMS(configuration.phone2, out_message.text)) {
-//          Serial.println(F("Failed to send to Phone 2!"));
-//        } else {
-//          Serial.println(F("Message sent to phone 2!"));
-//        }
-      }
-      retryCount=0; // Reset after this message
-      msgQueue.pop(&out_message);
-    }
-  }else{
-    // Wireless disabled, tell the console and bail
-    if(!msgQueue.isEmpty()){
-      Serial.println(F("Wireless Disabled, here's the message"));
-      Serial.print(F("SENDING MESSAGE: "));
-      while (!msgQueue.isEmpty()){
-        msgQueue.pop(&out_message);
-        Serial.println(out_message.text);
-      }
-    }
-  }
-}
-
-
 void showCurrent(){
   // Print the values to the serial port - Menu triggered
-  Serial.print(F("Temperature: "));
-  Serial.print(current.temp, DEC);
+  Serial.print(F("Temperature: ")); 
+  Serial.print(current.temp, 0); // NDM - no point with decimal points with DHT11
   Serial.print(F("C"));
-  Serial.print(F(" Humidity: "));
-  Serial.print(current.humidity, DEC);
+  Serial.print(F(" Humidity: ")); 
+  Serial.print(current.humidity);
   Serial.print(F("%"));
-  Serial.print(F(" Voltage: "));
-  Serial.print(current.voltageIn, DEC);
+  Serial.print(F(" VoltageIn: "));
+  Serial.print(current.voltageIn);
+  Serial.print(F("V"));
+  Serial.print(F(" VoltageBatt: "));
+  Serial.print(current.voltageBatt);
   Serial.println(F("V")); 
+
 }
 
 // This gets set as the default handler, and gets called when no other command matches. 
@@ -213,6 +82,8 @@ void showConfig(){
   Serial.println(configuration.phone[0]); 
   Serial.print(F("    Phone 2: ")); 
   Serial.println(configuration.phone[1]);
+  Serial.print(F("    Phone 3: ")); 
+  Serial.println(configuration.phone[2]);
   Serial.print(F("    Repeat: ")); 
   Serial.println(configuration.alarmRepeat / 60000);
 }

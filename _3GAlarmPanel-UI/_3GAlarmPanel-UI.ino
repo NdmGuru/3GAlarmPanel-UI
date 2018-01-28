@@ -1,6 +1,6 @@
 #include <cppQueue.h>
 #include <MemoryFree.h>
-#include <Sensirion.h>
+#include <SimpleDHT.h>
 #include <Adafruit_FONA.h>
 #include <SoftwareSerial.h> 
 #include <SerialCommand.h>
@@ -23,14 +23,8 @@
 #define FONA_RST 9
 #define FONA_PWR 8
 
-// SHT11 Pins
-#define SHT11_DATA  5
-#define SHT11_CLOCK 4
-const unsigned long TRHSTEP   = 5000UL;  // Sensor query period
-
-unsigned int rawData;
-float temperature;
-float humidity;
+// DHT11 Pins
+#define DHT11_DATA  5
 
 // LED Pins
 #define LED_GREEN  7
@@ -53,13 +47,17 @@ float humidity;
 
 // Queue for SMS Messages
 #define  MAX_MSG_LEN      56
-#define  MAX_MSG_NUM      2
+#define  MAX_MSG_NUM      3
 #define  IMPLEMENTATION  FIFO
+
+// SMS Settings
+#define  SMS_RETRY_CNT    5
 
 // Our Message Structure
 typedef struct message {
-  char     text[MAX_MSG_LEN];
-  bool     send = false; 
+  char  to[11];
+  char  text[MAX_MSG_LEN];
+  int   retry_cnt = 1;
 } Message;
 
 Queue  msgQueue(sizeof(Message), MAX_MSG_NUM, IMPLEMENTATION); // Instantiate queue
@@ -68,12 +66,8 @@ Queue  msgQueue(sizeof(Message), MAX_MSG_NUM, IMPLEMENTATION); // Instantiate qu
 char replybuffer[MAX_CMD_LEN];
 SerialCommand SCmd;
 
-// SHT11 Sensor
-#define ENA_ERRCHK  // Enable error checking code
-byte error = 0;
-byte measActive = false;
-byte measType = TEMP;
-Sensirion sht = Sensirion(SHT11_DATA, SHT11_CLOCK);
+// DHT11 Sensor
+SimpleDHT11 dht11;
 
 // FONA
 SoftwareSerial fonaSS = SoftwareSerial(FONA_TX,FONA_RX);
@@ -97,11 +91,11 @@ int ledOrangeState = LOW;
 struct STATE
 {
   byte  tempState    ;
-  int   temp         ;
+  float temp         ;
   
   byte  voltageState ;
-  int   voltageIn    ;
-  int   voltageBatt  ;
+  float voltageIn    ;
+  float voltageBatt  ;
   
   
   byte  humidityState;
@@ -125,7 +119,7 @@ struct config_t
     int   humidityHigh;
     int   humidityLow;    
     long  alarmRepeat;
-    char  phone[2][11];
+    char  phone[3][11];
     bool  wireless_en = true;
     bool  debug = false;
 } configuration;
@@ -149,17 +143,15 @@ void setup()
   Serial.println(F("Line termination needs to be CR for terminal to work..."));
   
   if(configuration.wireless_en){
-    
     if(configuration.debug){
       Serial.println(F("DEBUG: Wireless Enabled, starting"));
     }
-    
     Serial.println(F("Initializing wireless...."));
     pinMode(FONA_PWR, OUTPUT);
+    
     digitalWrite(FONA_PWR, HIGH);
     delay(4000);
     digitalWrite(FONA_PWR, LOW);
-    delay(2000);
     
     fonaSerial->begin(4800);
     if (! fona.begin(*fonaSerial)) {
@@ -210,9 +202,10 @@ void loop()
      updateStatus();
      // We need to check for new alarms each check, and send those here - Think this is the best place...
      if(current.stateChange){
-      sendAlertString();     
+      queueAlerts();     
      }
-     sendMsgs();
+     // Push out sms queue here
+     sendAlerts();
   }
 
   // Handles repeat Alert Messages
@@ -227,7 +220,7 @@ void loop()
       current.lastAlert = currentMillis;
 
       if(current.alarm){
-        sendAlertString();
+        queueAlerts();
       };
   }
 

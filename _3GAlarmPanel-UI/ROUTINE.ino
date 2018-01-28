@@ -14,6 +14,7 @@ void updateStatus(){
   // Update the temp/humidity sensors
   readSHT11();
   readVoltage(0);
+  readVoltage(1);
   
   // Update TEMP status
   if(current.temp >= configuration.tempHigh){
@@ -96,7 +97,8 @@ void updateStatus(){
   if(configuration.debug){
      showFree();
   }else{
-    Serial.println("Tick...");
+    Serial.print("Tick: ");
+    Serial.println(millis());
   }
 }
 

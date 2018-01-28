@@ -1,38 +1,30 @@
 void readSHT11(){
-   if(configuration.debug){
-      Serial.println(F("DEBUG: Reading SHT Temp Sensor"));
-   }
-   
-   unsigned long curMillis = millis();          // Get current time
-   if (curMillis - trhMillis >= TRHSTEP) {      // Time for new measurements?
-    measActive = true;
-    measType = TEMP;
-    if (error = sht.meas(TEMP, &rawData, NONBLOCK)) // Start temp measurement
-      if(configuration.debug){
-          Serial.println(F("DEBUG: Error reading SHT11 TEMP"));
-      }
-    trhMillis = curMillis;
+  if(configuration.debug){
+     Serial.println(F("DEBUG: Reading SHT Temp Sensor"));
   }
-  if (measActive && (error = sht.measRdy())) { // Check measurement status
-    if (error != S_Meas_Rdy)
-      if(configuration.debug){
-        Serial.println(F("DEBUG: SHT11 Not ready for read"));
-      }
-      if (measType == TEMP) {                    // Process temp or humi?
-        measType = HUMI;
-        current.temp = sht.calcTemp(rawData);
-        if (error = sht.meas(HUMI, &rawData, NONBLOCK)) 
-          if(configuration.debug){
-            Serial.println(F("DEBUG: Error reading SHT11 HUMIDITY"));
-          }
-      } else {
-        measActive = false;
-        current.humidity = sht.calcHumi(rawData, temperature); // Convert raw sensor data    }
-      }
+
+  byte temperature = 0;
+  byte humidity = 0;
+  int err = SimpleDHTErrSuccess;
+  if ((err = dht11.read(DHT11_DATA, &temperature, &humidity, NULL)) != SimpleDHTErrSuccess) {
+    Serial.print("Read DHT11 failed, err="); Serial.println(err);
+    return;
   }
+  if(configuration.debug){
+    Serial.print(F("DEBUG: TEMP: "));
+    Serial.println(temperature);
+    Serial.print(F("DEBUG: HUMIDITY: "));
+    Serial.println(humidity);
+  }
+  current.temp = temperature;
+  current.humidity =  humidity; 
 }
 
 void readVoltage(int num){
+  if(configuration.debug){
+     Serial.print(F("DEBUG: Reading Voltage input "));
+     Serial.println(num);
+  }
   int read_pin = 0;
   int sum = 0;                    // sum of samples taken
   unsigned char sample_count = 0;
@@ -56,8 +48,16 @@ void readVoltage(int num){
   
   if(num == 0){
     current.voltageIn = voltage * 11.132;
+    if(configuration.debug){
+      Serial.print(F("DEBUG: Voltage In: "));
+      Serial.println(current.voltageIn);
+    }
   }else if (num == 1){
     current.voltageBatt = voltage * 11.132;
+    if(configuration.debug){
+      Serial.print(F("DEBUG: Voltage Batt: "));
+      Serial.println(current.voltageBatt);
+    }  
   }
   
   sample_count = 0;

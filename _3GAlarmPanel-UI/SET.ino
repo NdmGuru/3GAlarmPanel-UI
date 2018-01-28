@@ -163,22 +163,23 @@ void setHumidity()
 void setPhone()    
 { 
   char arg[11];
-  char phone1[11];
-  char phone2[11];
+  char phone[11];
+  int  num = -1;
 
-  strlcpy(phone1, SCmd.next(),11);
-  strlcpy(phone2, SCmd.next(),11);
+  num = atoi(SCmd.next());
+  strlcpy(phone, SCmd.next(),11);
   
- if(strlen(phone1) == 0 or strlen(phone2) == 0){
-    Serial.println(F("phone <phone1> <phone2>"));
+  if ((num > 3) or (strlen(phone) == 0) or (num == -1)){
+    Serial.println(F("phone <number(1-3)> <phone>"));
     return;
   }
+
+  num--;
   
-  strlcpy(configuration.phone[0], phone1, 11);
-  strlcpy(configuration.phone[1], phone2, 11);
+  strlcpy(configuration.phone[num], phone, 11);
   
   EEPROM.put(EEPROMStart, configuration);
 
-  Serial.println(F("Phone numbers saved"));
+  Serial.println(F("Phone number saved"));
   showConfig();
 }
