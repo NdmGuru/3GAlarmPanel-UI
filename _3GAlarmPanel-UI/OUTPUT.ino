@@ -17,16 +17,19 @@ void showCurrent(){
 
 // This gets set as the default handler, and gets called when no other command matches. 
 void unrecognized()
-{
+{ 
   Serial.println(F("Commands:")); 
-  Serial.println(F("  phone <number1> <number2>")); 
-  Serial.println(F("  temp <high> <low>")); 
-  Serial.println(F("  humidity <high> <low>")); 
-  Serial.println(F("  voltage <high> <low>")); 
-  Serial.println(F("  repeat <minutes>")); 
+  Serial.println(F("  phone     <pos>  <number>")); 
+  Serial.println(F("  temp      <high> <low>")); 
+  Serial.println(F("  humidity  <high> <low>")); 
+  Serial.println(F("  voltage   <high> <low>")); 
+  Serial.println(F("  repeat    <minutes>")); 
+  Serial.println(F("  wireless  <bool>")); 
+  Serial.println(F("  debug     <bool>"));
   Serial.println(F("  config")); 
   Serial.println(F("  show")); 
-  Serial.println(F("  testsms")); 
+  Serial.println(F("  state")); 
+  Serial.println(F("  network"));  
   Serial.println(F("  default")); 
 }
 
@@ -171,3 +174,11 @@ void blink(byte colour){
       }
   }
 }
+
+void showState(){
+  char message_text[MAX_MSG_LEN] = "";
+  
+  buildAlertString(message_text);
+  Serial.println(message_text);
+}
+

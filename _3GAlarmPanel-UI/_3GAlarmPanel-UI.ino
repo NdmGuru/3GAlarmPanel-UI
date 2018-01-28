@@ -161,17 +161,18 @@ void setup()
   }
   
   // Setup callbacks for SerialCommand commands   
+  SCmd.addCommand("phone",setPhone);
   SCmd.addCommand("temp",setTemp);
   SCmd.addCommand("humidity",setHumidity);
+  SCmd.addCommand("voltage",setVoltage);
+  SCmd.addCommand("repeat",setRepeat);
   SCmd.addCommand("wireless",setWireless);
   SCmd.addCommand("debug",setDebug);
-  SCmd.addCommand("phone",setPhone);
-  SCmd.addCommand("repeat",setRepeat);
-  SCmd.addCommand("voltage",setVoltage);
-  SCmd.addCommand("show",showCurrent);
   SCmd.addCommand("config",showConfig);
-  SCmd.addCommand("default",clearEeprom);
+  SCmd.addCommand("show",showCurrent);
+  SCmd.addCommand("state",showState);
   SCmd.addCommand("network",showNetworkStatus);
+  SCmd.addCommand("default",clearEeprom);
   SCmd.addDefaultHandler(unrecognized);
 
   if(configuration.debug){
