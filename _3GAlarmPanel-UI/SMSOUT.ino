@@ -107,6 +107,10 @@ void queueAlerts(){
 }
 
 void sendAlerts(){
+  if(millis() <= 15000){
+    Serial.print(F("Modem not ready, skipping"));
+    return;
+  }
   if(configuration.debug){
     Serial.print(F("DEBUG: Sending "));
     Serial.print(msgQueue.nbRecs());
