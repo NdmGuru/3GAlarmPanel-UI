@@ -2,9 +2,10 @@
 #include <MemoryFree.h>
 #include <SimpleDHT.h>
 #include <Adafruit_FONA.h>
-#include <SoftwareSerial.h> 
+#include <SoftwareSerial.h>
 #include <SerialCommand.h>
 #include <EEPROM.h>
+#include <TimeLib.h>
 
 // PIN NUMBERS
 // Digital
@@ -70,14 +71,14 @@ SerialCommand SCmd;
 SimpleDHT11 dht11;
 
 // FONA
-SoftwareSerial fonaSS = SoftwareSerial(FONA_TX,FONA_RX);
+SoftwareSerial fonaSS = SoftwareSerial(FONA_TX, FONA_RX);
 SoftwareSerial *fonaSerial = &fonaSS;
 Adafruit_FONA_3G fona = Adafruit_FONA_3G(FONA_RST);
 
 // Timing
 static unsigned long   trhMillis                = 0;             // Time interval tracking
-static unsigned long   previousLedMillis        = 0; 
-static unsigned long   ledFlashInterval         = 500; 
+static unsigned long   previousLedMillis        = 0;
+static unsigned long   ledFlashInterval         = 500;
 static unsigned long   updatePreviousMillis     = 0;     // last time update
 static int             updateInterval           = 5;     // How often to check sensors 5 seconds
 bool                   firstCheck               = true;
@@ -92,12 +93,12 @@ struct STATE
 {
   byte  tempState    ;
   float temp         ;
-  
+
   byte  voltageState ;
   float voltageIn    ;
   float voltageBatt  ;
-  
-  
+
+
   byte  humidityState;
   int   humidity     ;
 
@@ -112,20 +113,20 @@ STATE previous{};
 // Our Config Structure
 struct config_t
 {
-    int   tempHigh;
-    int   tempLow;
-    int   voltageHigh;
-    int   voltageLow;
-    int   humidityHigh;
-    int   humidityLow;    
-    long  alarmRepeat;
-    char  phone[3][11];
-    bool  wireless_en = true;
-    bool  debug = false;
+  int   tempHigh;
+  int   tempLow;
+  int   voltageHigh;
+  int   voltageLow;
+  int   humidityHigh;
+  int   humidityLow;
+  long  alarmRepeat;
+  char  phone[3][11];
+  bool  wireless_en = true;
+  bool  debug = false;
 } configuration;
 
 void setup()
-{   
+{
 
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_GREEN, OUTPUT);
@@ -135,102 +136,100 @@ void setup()
   EEPROM.get(EEPROMStart, configuration);
 
   Serial.begin(9600);
-  
-  if(configuration.debug){
+
+  if (configuration.debug) {
     Serial.println(F("DEBUG: BEGIN"));
   }
   Serial.println(F("Starting 3GAlarmPanel-NDM.guru V1.0.0"));
   Serial.println(F("Line termination needs to be CR for terminal to work..."));
-  
-  if(configuration.wireless_en){
-    if(configuration.debug){
+
+  if (configuration.wireless_en) {
+    if (configuration.debug) {
       Serial.println(F("DEBUG: Wireless Enabled, starting"));
     }
     Serial.println(F("Initializing wireless...."));
     pinMode(FONA_PWR, OUTPUT);
-    
+
     digitalWrite(FONA_PWR, HIGH);
     delay(4000);
     digitalWrite(FONA_PWR, LOW);
-    
+
     fonaSerial->begin(4800);
     if (! fona.begin(*fonaSerial)) {
       Serial.println(F("Couldn't find FONA"));
       led(OFF);
-      while (1){
+      while (1) {
         blink(B00000010);
       }
     }
-    if (!fona.enableNetworkTimeSync(true)){
-      Serial.println(F("Failed to enable network time sync"));
-    }
   }
-  
-  // Setup callbacks for SerialCommand commands   
-  SCmd.addCommand("phone",setPhone);
-  SCmd.addCommand("temp",setTemp);
-  SCmd.addCommand("humidity",setHumidity);
-  SCmd.addCommand("voltage",setVoltage);
-  SCmd.addCommand("repeat",setRepeat);
-  SCmd.addCommand("wireless",setWireless);
-  SCmd.addCommand("debug",setDebug);
-  SCmd.addCommand("config",showConfig);
-  SCmd.addCommand("show",showCurrent);
-  SCmd.addCommand("state",showState);
-  SCmd.addCommand("network",showNetworkStatus);
-  SCmd.addCommand("default",clearEeprom);
+
+  // Setup callbacks for SerialCommand commands
+  SCmd.addCommand("phone", setPhone);
+  SCmd.addCommand("temp", setTemp);
+  SCmd.addCommand("humidity", setHumidity);
+  SCmd.addCommand("voltage", setVoltage);
+  SCmd.addCommand("repeat", setRepeat);
+  SCmd.addCommand("wireless", setWireless);
+  SCmd.addCommand("debug", setDebug);
+  SCmd.addCommand("config", showConfig);
+  SCmd.addCommand("show", showCurrent);
+  SCmd.addCommand("state", showState);
+  SCmd.addCommand("network", showNetworkStatus);
+  SCmd.addCommand("date", showDate);
+  SCmd.addCommand("default", clearEeprom);
   SCmd.addDefaultHandler(unrecognized);
 
-  if(configuration.debug){
+  if (configuration.debug) {
     showConfig();
   }
-    
+
   Serial.println(F("Ready"));
   Serial.println(F("Current Status:"));
   updateStatus();
   showCurrent();
- }
+}
 
 void loop()
-{  
+{
   updateLeds();
 
   unsigned long currentMillis = millis();
 
-  if(currentMillis - updatePreviousMillis > (updateInterval * 1000) and (!firstCheck)) {
-     if(configuration.debug){
-       Serial.println(F("DEBUG: Update interval reached"));
-     }
-     updatePreviousMillis = currentMillis;
-     if(configuration.debug){
+  if (currentMillis - updatePreviousMillis > (updateInterval * 1000) and (!firstCheck)) {
+    if (configuration.debug) {
+      Serial.println(F("DEBUG: Update interval reached"));
+    }
+    updatePreviousMillis = currentMillis;
+    if (configuration.debug) {
       showFree();
-     }
-       
-     updateStatus();
-     // We need to check for new alarms each check, and send those here - Think this is the best place...
-     if(current.stateChange){
-      queueAlerts();     
-     }
-     // Push out sms queue here
-     sendAlerts();
+    }
+    
+    updateStatus();
+    // We need to check for new alarms each check, and send those here - Think this is the best place...
+    if (current.stateChange) {
+      queueAlerts();
+    }
+    // Push out sms queue here
+    sendAlerts();
   }
 
   // Handles repeat Alert Messages
-  if((currentMillis - current.lastAlert > configuration.alarmRepeat) or firstCheck) {
-      firstCheck = false;
-       if(configuration.debug){
-         Serial.println(F("DEBUG: Alarm repeat interval reached"));
-          if(!current.alarm){
-           Serial.println(F("DEBUG: No Alarms to send"));
+  if ((currentMillis - current.lastAlert > configuration.alarmRepeat) or firstCheck) {
+    firstCheck = false;
+    if (configuration.debug) {
+      Serial.println(F("DEBUG: Alarm repeat interval reached"));
+      if (!current.alarm) {
+        Serial.println(F("DEBUG: No Alarms to send"));
       };
-       }
-      current.lastAlert = currentMillis;
+    }
+    current.lastAlert = currentMillis;
 
-      if(current.alarm){
-        queueAlerts();
-      };
+    if (current.alarm) {
+      queueAlerts();
+    };
   }
 
   // Read the serial buffer and run commands
-  SCmd.readSerial();     
+  SCmd.readSerial();
 }
