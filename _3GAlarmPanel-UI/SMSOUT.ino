@@ -136,8 +136,11 @@ void sendAlerts(){
           break;
         }
       }else{
-        Serial.print(F("Wireless Disabled, here's the message:"));
+        Serial.print(F("Wireless Disabled, here's the message to "));
+        Serial.print(this_message.to);
+        Serial.print(F(": "));
         Serial.println(this_message.text);
+        break;
       }
       this_message.retry_cnt++;    
     }

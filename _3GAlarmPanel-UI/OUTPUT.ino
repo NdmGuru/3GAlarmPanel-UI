@@ -181,4 +181,3 @@ void showState(){
   buildAlertString(message_text);
   Serial.println(message_text);
 }
-

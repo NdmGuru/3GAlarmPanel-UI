@@ -139,7 +139,7 @@ void setup()
   if(configuration.debug){
     Serial.println(F("DEBUG: BEGIN"));
   }
-  Serial.println(F("Starting 3GAlarmPanel-NDM.guru V0001"));
+  Serial.println(F("Starting 3GAlarmPanel-NDM.guru V1.0.0"));
   Serial.println(F("Line termination needs to be CR for terminal to work..."));
   
   if(configuration.wireless_en){
@@ -156,7 +156,13 @@ void setup()
     fonaSerial->begin(4800);
     if (! fona.begin(*fonaSerial)) {
       Serial.println(F("Couldn't find FONA"));
-      while (1);
+      led(OFF);
+      while (1){
+        blink(B00000010);
+      }
+    }
+    if (!fona.enableNetworkTimeSync(true)){
+      Serial.println(F("Failed to enable network time sync"));
     }
   }
   
@@ -191,7 +197,7 @@ void loop()
 
   unsigned long currentMillis = millis();
 
-  if(currentMillis - updatePreviousMillis > (updateInterval * 1000)) {
+  if(currentMillis - updatePreviousMillis > (updateInterval * 1000) and (!firstCheck)) {
      if(configuration.debug){
        Serial.println(F("DEBUG: Update interval reached"));
      }
