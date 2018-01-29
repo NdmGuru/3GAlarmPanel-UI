@@ -191,15 +191,22 @@ void syncDate() {
 
   char buffer[23];
   fona.getTime(buffer, 23);  // make sure replybuffer is at least 23 bytes!
+
+  Serial.println(buffer);
   
-  char yr[3];
-  char mh[3];
-  char dy[3];
-  char hr[3];
-  char mn[3];
-  char sd[3];
+  int yr = 0;
+  int mh = 0;
+  int dy = 0;
+  int hr = 0;
+  int mn = 0;
+  int sd = 0;
+
+  int results = 0;
   
-  sscanf(buffer,"%d[^/]/%d[^/]/%d[^/],%d[^:]:%d[^:]:%d[^:]", &yr, &dy, &mh, &hr, &mn, &sd);
+  results = sscanf(buffer,"%d/%d/%d,%d:%d:%d", &yr, &mh, &dy, &hr, &mn, &sd);
+  
+  Serial.print("variables returned: ");
+  Serial.println(results);
 
   Serial.println(yr);
   Serial.println(mh);

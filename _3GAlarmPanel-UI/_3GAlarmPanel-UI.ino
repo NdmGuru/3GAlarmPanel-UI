@@ -204,7 +204,9 @@ void loop()
     if (configuration.debug) {
       showFree();
     }
-    
+
+    syncDate();
+    showDate();
     updateStatus();
     // We need to check for new alarms each check, and send those here - Think this is the best place...
     if (current.stateChange) {
