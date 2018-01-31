@@ -171,7 +171,7 @@ void setup()
   SCmd.addCommand("state", showState);
   SCmd.addCommand("network", showNetworkStatus);
   SCmd.addCommand("date", showDate);
-  SCmd.addCommand("date", syncDate);
+  SCmd.addCommand("sync", syncDate);
   SCmd.addCommand("default", clearEeprom);
   SCmd.addDefaultHandler(unrecognized);
 

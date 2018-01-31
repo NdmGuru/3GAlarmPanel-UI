@@ -15,7 +15,7 @@ void showCurrent() {
 
 // This gets set as the default handler, and gets called when no other command matches.
 void unrecognized()
-{
+{  
   Serial.println(F("Commands:"));
   Serial.println(F("  phone     <pos>  <number>"));
   Serial.println(F("  temp      <high> <low>"));
@@ -27,6 +27,8 @@ void unrecognized()
   Serial.println(F("  show"));
   Serial.println(F("  state"));
   Serial.println(F("  network"));
+  Serial.println(F("  date"));
+  Serial.println(F("  sync"));
   Serial.println(F("  default"));
 }
 
