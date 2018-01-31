@@ -1,11 +1,9 @@
 void showCurrent() {
   // Print the values to the serial port - Menu triggered
+  showDate();
   Serial.print(F("Temperature: "));
   Serial.print(current.temp, 0); // NDM - no point with decimal points with DHT11
   Serial.print(F("C"));
-  Serial.print(F(" Humidity: "));
-  Serial.print(current.humidity);
-  Serial.print(F("%"));
   Serial.print(F(" VoltageIn: "));
   Serial.print(current.voltageIn);
   Serial.print(F("V"));
@@ -21,7 +19,6 @@ void unrecognized()
   Serial.println(F("Commands:"));
   Serial.println(F("  phone     <pos>  <number>"));
   Serial.println(F("  temp      <high> <low>"));
-  Serial.println(F("  humidity  <high> <low>"));
   Serial.println(F("  voltage   <high> <low>"));
   Serial.println(F("  repeat    <minutes>"));
   Serial.println(F("  wireless  <bool>"));
@@ -54,7 +51,7 @@ void showNetworkStatus() {
   if (n == 4) Serial.println(F("Unknown"));
   if (n == 5) Serial.println(F("Registered roaming"));
 
-  Serial.print(F("RSSI = ")); Serial.print(rssi); Serial.print(": ");
+  Serial.print(F("RSSI = ")); Serial.print(rssi); Serial.print(F(": "));
   if (rssi == 0) r = -115;
   if (rssi == 1) r = -111;
   if (rssi == 31) r = -52;
@@ -73,10 +70,6 @@ void showConfig() {
   Serial.println(configuration.tempHigh);
   Serial.print(F("    Temp Low: "));
   Serial.println(configuration.tempLow);
-  Serial.print(F("    Humidiry High: "));
-  Serial.println(configuration.humidityHigh);
-  Serial.print(F("    Humidity Low: "));
-  Serial.println(configuration.humidityLow);
   Serial.print(F("    Voltage High: "));
   Serial.println(configuration.voltageHigh);
   Serial.print(F("    Voltage Low: "));
@@ -183,15 +176,12 @@ void showState() {
 }
 
 void showDate() {
-  Serial.print(F("Date: "));
-  Serial.print(hour());
-  Serial.print(F(":"));
-  Serial.print(minute());
-  Serial.print(F(" "));
-  Serial.print(day());
-  Serial.print(F("/"));
-  Serial.print(month());
-  Serial.print(F("/"));
-  Serial.println(year());
+   char dateBuffer[12];
+
+   sprintf(dateBuffer,"%02u-%02u-%04u ",day(),month(),year());
+   Serial.print(dateBuffer);
+
+   sprintf(dateBuffer,"%02u:%02u:%02u ",hour(),minute(),second());
+   Serial.println(dateBuffer);
 }
 

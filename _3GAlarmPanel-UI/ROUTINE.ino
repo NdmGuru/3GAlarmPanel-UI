@@ -4,6 +4,14 @@ void updateStatus() {
     Serial.println(F("DEBUG: Update Status triggered"));
   }
 
+  // Check the date is something sane, and update it if not. 
+  if((timeStatus()!= timeSet) or (year() == 1970)) {
+    if(configuration.debug){
+       Serial.println(F("DEBUG: Time not set, setting..."));
+    }
+    syncDate();
+  }
+  
   // Assume we have no alarms or state change
   current.alarm = false;
   current.stateChange = false;
@@ -33,27 +41,6 @@ void updateStatus() {
     current.tempState = B00000000;
     if (configuration.debug) {
       Serial.println(F("DEBUG: Temp Normal"));
-    }
-  }
-
-  // Update HUMIDITY status
-  if (current.humidity >= configuration.humidityHigh) {
-    current.humidityState = B00000010;
-    current.alarm = true;
-    if (configuration.debug) {
-      Serial.println(F("DEBUG: HUMIDITY High"));
-    }
-  } else if (current.humidity <= configuration.humidityLow) {
-    current.humidityState = B00000001;
-    current.alarm = true;
-    if (configuration.debug) {
-      Serial.println(F("DEBUG: HUMIDITY Low"));
-    }
-  } else {
-    current.humidityState = B00000000;
-    // Track state change for dismiss messages
-    if (configuration.debug) {
-      Serial.println(F("DEBUG: Humidity Normal"));
     }
   }
 
@@ -89,16 +76,19 @@ void updateStatus() {
     }
   }
 
-  if ((current.tempState != previous.tempState) or (current.humidityState != previous.humidityState) or (current.voltageState != previous.voltageState)) {
+  if ((current.tempState != previous.tempState) or (current.voltageState != previous.voltageState)) {
     current.stateChange = true;
-  } else if ((current.tempState == previous.tempState) and (current.humidityState == previous.humidityState) and (current.voltageState == previous.voltageState)) {
+  } else if ((current.tempState == previous.tempState) and (current.voltageState == previous.voltageState)) {
     current.stateChange = false;
   }
   if (configuration.debug) {
     showFree();
   } else {
-    Serial.print("Tick: ");
-    Serial.println(millis());
+    char dateBuffer[12];
+    sprintf(dateBuffer,"%02u:%02u:%02u ",hour(),minute(),second());
+
+    Serial.print(F("Tick: "));
+    Serial.println(dateBuffer);
   }
 }
 

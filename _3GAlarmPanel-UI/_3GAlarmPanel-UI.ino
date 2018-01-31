@@ -6,6 +6,7 @@
 #include <SerialCommand.h>
 #include <EEPROM.h>
 #include <TimeLib.h>
+//#include <TimeAlarms.h>
 
 // PIN NUMBERS
 // Digital
@@ -24,7 +25,7 @@
 #define FONA_RST 9
 #define FONA_PWR 8
 
-// DHT11 Pins
+// DHT11 Pins/
 #define DHT11_DATA  5
 
 // LED Pins
@@ -52,7 +53,7 @@
 #define  IMPLEMENTATION  FIFO
 
 // SMS Settings
-#define  SMS_RETRY_CNT    5
+#define  SMS_RETRY_CNT    3
 
 // Our Message Structure
 typedef struct message {
@@ -98,13 +99,10 @@ struct STATE
   float voltageIn    ;
   float voltageBatt  ;
 
-
-  byte  humidityState;
-  int   humidity     ;
-
   float lastAlert = 0;
   bool  alarm        ;
   bool  stateChange  ;
+  
 };
 
 STATE current{};
@@ -117,8 +115,6 @@ struct config_t
   int   tempLow;
   int   voltageHigh;
   int   voltageLow;
-  int   humidityHigh;
-  int   humidityLow;
   long  alarmRepeat;
   char  phone[3][11];
   bool  wireless_en = true;
@@ -140,8 +136,7 @@ void setup()
   if (configuration.debug) {
     Serial.println(F("DEBUG: BEGIN"));
   }
-  Serial.println(F("Starting 3GAlarmPanel-NDM.guru V1.0.0"));
-  Serial.println(F("Line termination needs to be CR for terminal to work..."));
+  Serial.println(F("Starting 3GAlarmPanel-NDM.guru V1.0.2"));
 
   if (configuration.wireless_en) {
     if (configuration.debug) {
@@ -167,7 +162,6 @@ void setup()
   // Setup callbacks for SerialCommand commands
   SCmd.addCommand("phone", setPhone);
   SCmd.addCommand("temp", setTemp);
-  SCmd.addCommand("humidity", setHumidity);
   SCmd.addCommand("voltage", setVoltage);
   SCmd.addCommand("repeat", setRepeat);
   SCmd.addCommand("wireless", setWireless);
@@ -177,12 +171,18 @@ void setup()
   SCmd.addCommand("state", showState);
   SCmd.addCommand("network", showNetworkStatus);
   SCmd.addCommand("date", showDate);
+  SCmd.addCommand("date", syncDate);
   SCmd.addCommand("default", clearEeprom);
   SCmd.addDefaultHandler(unrecognized);
 
   if (configuration.debug) {
     showConfig();
   }
+
+  setSyncProvider(syncDate);// Set the external time
+  setSyncInterval(900);
+
+  //Alarm.alarmRepeat(11,59,0, queueAlerts); 
 
   Serial.println(F("Ready"));
   Serial.println(F("Current Status:"));
@@ -204,9 +204,7 @@ void loop()
     if (configuration.debug) {
       showFree();
     }
-
-    syncDate();
-    showDate();
+ 
     updateStatus();
     // We need to check for new alarms each check, and send those here - Think this is the best place...
     if (current.stateChange) {

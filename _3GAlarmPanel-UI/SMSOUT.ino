@@ -7,49 +7,33 @@ void buildAlertString(char *message_t) {
   // This was a major cause of memory overwrite!
   char currentTemp[3] = "";
   char currentVoltage[6] = "";
-  char currentHumidity[3] = "";
-
+  
   dtostrf(current.temp, 2, 0, currentTemp); // NDM - No decimal on a sensor with +-2C accuracy
   dtostrf(current.voltageIn, 5, 2, currentVoltage);
-  dtostrf(current.humidity, 2, 0, currentHumidity); // NDM As above
-
-
+  
   if (configuration.debug) {
     showFree();
   }
 
+  char time_tmp[7];
+  snprintf(time_tmp, sizeof(time_tmp), "%02d:%02d", hour(), minute());
+  
+  strcat(message_t,time_tmp);
+  
   switch (current.tempState) {
     case B00000000:
-      strcat(message_t, "TEMP OK:");
+      strcat(message_t, " TEMP OK:");
       strcat(message_t, currentTemp);
       strcat(message_t, " ");
       break;
     case B00000001:
-      strcat(message_t, "TEMP LOW:");
+      strcat(message_t, " TEMP LOW:");
       strcat(message_t, currentTemp);
       strcat(message_t, " ");
       break;
     case B00000010:
       strcat(message_t, "TEMP HIGH:");
       strcat(message_t, currentTemp);
-      strcat(message_t, " ");
-      break;
-  }
-
-  switch (current.humidityState) {
-    case B00000000:
-      strcat(message_t, "HUMIDITY OK:");
-      strcat(message_t, currentHumidity);
-      strcat(message_t, " ");
-      break;
-    case B00000001:
-      strcat(message_t, "HUMIDITY LOW:");
-      strcat(message_t, currentHumidity);
-      strcat(message_t, " ");
-      break;
-    case B00000010:
-      strcat(message_t, "HUMIDITY HIGH:");
-      strcat(message_t, currentHumidity);
       strcat(message_t, " ");
       break;
   }

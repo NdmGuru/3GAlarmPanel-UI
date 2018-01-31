@@ -7,17 +7,14 @@ void readSHT11() {
   byte humidity = 0;
   int err = SimpleDHTErrSuccess;
   if ((err = dht11.read(DHT11_DATA, &temperature, &humidity, NULL)) != SimpleDHTErrSuccess) {
-    Serial.print("Read DHT11 failed, err="); Serial.println(err);
+    Serial.print(F("Read DHT11 failed, err=")); Serial.println(err);
     return;
   }
   if (configuration.debug) {
     Serial.print(F("DEBUG: TEMP: "));
     Serial.println(temperature);
-    Serial.print(F("DEBUG: HUMIDITY: "));
-    Serial.println(humidity);
   }
   current.temp = temperature;
-  current.humidity =  humidity;
 }
 
 void readVoltage(int num) {

@@ -128,37 +128,6 @@ void setVoltage()
   EEPROM.put(EEPROMStart, configuration);
   showConfig();
 }
-void setHumidity()
-{
-  char *humidityHigh;
-  char *humidityLow;
-
-  int humidityHigh_t;
-  int humidityLow_t;
-
-  humidityHigh = SCmd.next();
-  humidityLow  = SCmd.next();
-
-  if ((humidityHigh == NULL) or (humidityLow == NULL)) {
-    Serial.println(F("HUMIDITY <HIGH> <LOW>"));
-    return;
-  }
-
-  humidityHigh_t = atoi(humidityHigh);  // Converts a char string to an integer
-  humidityLow_t = atoi(humidityLow);   // Converts a char string to an integer
-
-  if ((humidityHigh_t <= humidityLow_t)) {
-    Serial.println(F("Humidity rang error"));
-    Serial.println(F("HUMIDITY <HIGH> <LOW>"));
-    return;
-  }
-
-  configuration.humidityHigh = humidityHigh_t;
-  configuration.humidityLow  = humidityLow_t;
-
-  EEPROM.put(EEPROMStart, configuration);
-  showConfig();
-}
 
 void setPhone()
 {
@@ -188,36 +157,31 @@ void syncDate() {
   // Sync the date from the FONA
   // read the time
   // Time = "18/01/28,21:36:20+44"
-
+  
   char buffer[23];
   fona.getTime(buffer, 23);  // make sure replybuffer is at least 23 bytes!
 
-  Serial.println(buffer);
-  
   int yr = 0;
   int mh = 0;
   int dy = 0;
   int hr = 0;
   int mn = 0;
   int sd = 0;
+  int start_date = 1970;
 
   int results = 0;
   
-  results = sscanf(buffer,"%d/%d/%d,%d:%d:%d", &yr, &mh, &dy, &hr, &mn, &sd);
-  
-  Serial.print("variables returned: ");
-  Serial.println(results);
-
-  Serial.println(yr);
-  Serial.println(mh);
-  Serial.println(hr);
-  Serial.println(mn);
-  Serial.println(sd);
-  
-  setTime(hr, mn, sd, dy, mh, yr);
-  if(timeStatus()!= timeSet) {
-    Serial.println("Unable to sync with the RTC");
+  results = sscanf(buffer,"\"%d/%d/%d,%d:%d:%d+44\"", &yr, &mh, &dy, &hr, &mn, &sd);
+ 
+  if((results == 6) and (yr != start_date)){
+    setTime(hr, mn, sd, dy, mh, yr);
+    if(timeStatus()!= timeSet) {
+     Serial.println(F("Unable to sync with RTC 1"));
+    }else{
+     Serial.println(F("RTC set the system time"));
+     showDate();
+    }
   }else{
-    Serial.println("RTC has set the system time");
+      Serial.println(F("Unable to sync with RTC 2"));
   }
 }
